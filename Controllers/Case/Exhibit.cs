@@ -55,8 +55,15 @@ public class ExhibitController : ControllerBase
             DateTimeSeizedProduced = e.DateTimeSeizedProduced,
             WhereSeizedProduced = e.WhereSeizedProduced,
             SeizedBy = e.SeizedBy,
-            Users = e.Users.Select(cu => new API.ExhibitUser
-                { Id = cu.User.Id, DisplayName = cu.User.DisplayName, JobTitle = cu.User.JobTitle }).ToList()
+            Users = e.Users.Select(eu => new API.User
+            {
+                Id = eu.User.Id, JobTitle = eu.User.JobTitle, DisplayName = eu.User.DisplayName,
+                GivenName = eu.User.GivenName, LastName = eu.User.LastName, EmailAddress = eu.User.EmailAddress,
+                ProfilePicture = eu.User.ProfilePicture,
+                Organization = new API.Organization
+                    { Name = eu.User.Organization.DisplayName, DisplayName = eu.User.Organization.DisplayName },
+                Roles = eu.User.Roles.Select(r => r.Name).ToList()
+            }).ToList()
         }).Where(e => e.Users.Any(u => u.Id == user.Id)).ToList();
     }
 
@@ -112,8 +119,15 @@ public class ExhibitController : ControllerBase
             DateTimeSeizedProduced = exhibit.DateTimeSeizedProduced,
             WhereSeizedProduced = exhibit.WhereSeizedProduced,
             SeizedBy = exhibit.SeizedBy,
-            Users = exhibit.Users.Select(cu => new API.ExhibitUser
-                { Id = cu.User.Id, DisplayName = cu.User.DisplayName, JobTitle = cu.User.JobTitle }).ToList()
+            Users = exhibit.Users.Select(eu => new API.User
+            {
+                Id = eu.User.Id, JobTitle = eu.User.JobTitle, DisplayName = eu.User.DisplayName,
+                GivenName = eu.User.GivenName, LastName = eu.User.LastName, EmailAddress = eu.User.EmailAddress,
+                ProfilePicture = eu.User.ProfilePicture,
+                Organization = new API.Organization
+                    { Name = eu.User.Organization.DisplayName, DisplayName = eu.User.Organization.DisplayName },
+                Roles = eu.User.Roles.Select(r => r.Name).ToList()
+            }).ToList()
         };
     }
 
@@ -207,8 +221,15 @@ public class ExhibitController : ControllerBase
             DateTimeSeizedProduced = newExhibit.DateTimeSeizedProduced,
             WhereSeizedProduced = newExhibit.WhereSeizedProduced,
             SeizedBy = newExhibit.SeizedBy,
-            Users = newExhibit.Users.Select(cu => new API.ExhibitUser
-                { Id = cu.User.Id, DisplayName = cu.User.DisplayName, JobTitle = cu.User.JobTitle }).ToList()
+            Users = newExhibit.Users.Select(eu => new API.User
+            {
+                Id = eu.User.Id, JobTitle = eu.User.JobTitle, DisplayName = eu.User.DisplayName,
+                GivenName = eu.User.GivenName, LastName = eu.User.LastName, EmailAddress = eu.User.EmailAddress,
+                ProfilePicture = eu.User.ProfilePicture,
+                Organization = new API.Organization
+                    { Name = eu.User.Organization.DisplayName, DisplayName = eu.User.Organization.DisplayName },
+                Roles = eu.User.Roles.Select(r => r.Name).ToList()
+            }).ToList()
         };
 
         return CreatedAtAction(nameof(GetExhibit),
