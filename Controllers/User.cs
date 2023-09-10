@@ -277,29 +277,35 @@ public class UsersController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "organization-administrator")]
+    [Authorize(Roles = "user")]
     public async Task<ActionResult<API.User>> CreateUser(API.AddUser userToAdd)
     {
-        // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks();
+       
+        // Get user id from claim
+        string? userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-        // If preflight checks returned an error return it here
-        if (preflightResponse.Error != null) return preflightResponse.Error;
+        // If user id is null then it does not exist in JWT so return a HTTP 400 error
+        if (userId == null)
+            return BadRequest("User ID can not be found in the JSON Web Token (JWT)!");
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+        // Get organization id from claim
+        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User requestingUser = preflightResponse.User;
+        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        if (organizationId == null)
+            return BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!");
+
+        // Fetch organization from the database by primary key
+        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        
+        if (organization == null)
+            return NotFound($"A organization with the ID `{organizationId}` can not be found!");
+       
 
         // Log OrganizationID and UserID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", requestingUser.Id);
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
 
         // Create the user based on the provided values
         Database.User userModel = new()
@@ -310,12 +316,22 @@ public class UsersController : ControllerBase
             LastName = userToAdd.LastName,
             DisplayName = userToAdd.DisplayName,
             EmailAddress = userToAdd.EmailAddress,
-            ProfilePicture = "",
+            ProfilePicture = userToAdd.ProfilePicture,
             Organization = organization
         };
 
         // Add the user
-        _dbContext.User.Add(userModel);
+        await _dbContext.User.AddAsync(userModel);
+        
+        // Add the users roles
+        foreach (string role in userToAdd.Roles)
+        {
+            await _dbContext.Role.AddAsync(new Database.Role
+            {
+                Name = role,
+                User = userModel
+            });
+        }
 
         try
         {
@@ -349,12 +365,12 @@ public class UsersController : ControllerBase
             new
             {
                 Action =
-                    $"User `{userModel.DisplayName} ({userModel.JobTitle})` was created by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
-                UserID = requestingUser.Id, OrganizationID = organization.Id
+                    $"User `{userModel.DisplayName} ({userModel.JobTitle})` added themselves to {organization.DisplayName}`.",
+                UserID = userId, OrganizationID = organizationId
             });
 
 
-        return CreatedAtAction("GetUser", new { id = userModel.Id }, userResponseObject);
+        return CreatedAtAction(nameof(GetUser), new { userId = userModel.Id }, userResponseObject);
     }
 
     // DELETE: /User/5

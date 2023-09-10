@@ -21,6 +21,8 @@ public class AddUser
     public required string LastName { get; set; }
     public required string DisplayName { get; set; }
     public required string EmailAddress { get; set; }
+    public required string ProfilePicture { get; set; }
+    public required List<string> Roles { get; set; }
 }
 
 public class UpdateUser
