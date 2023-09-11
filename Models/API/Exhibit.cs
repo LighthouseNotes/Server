@@ -10,7 +10,7 @@ public class Exhibit
     public required DateTime DateTimeSeizedProduced { get; set; }
     public required string WhereSeizedProduced { get; set; }
     public required string SeizedBy { get; set; }
-    public required ICollection<User> Users { get; set; }
+    public required ICollection<User> Users { get; init; }
 }
 
 

@@ -60,7 +60,7 @@ public class TabsController : ControllerBase
     }
 
     // GET: /tab/5
-    [Route("/case/{caseId}/tab/{tabId}")]
+    [Route("/case/{caseId:guid}/tab/{tabId:guid}")]
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
@@ -600,7 +600,7 @@ public class TabsController : ControllerBase
     }
 
     // POST  /case/5/contemporaneous-notes/image
-    [HttpPost("/case/{caseId}/tab/{tabId}/content/image")]
+    [HttpPost("/case/{caseId:guid}/tab/{tabId:guid}/content/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]

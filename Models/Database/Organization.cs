@@ -11,7 +11,7 @@ public class Organization
 
     public required string Name { get; set; }
     public required string DisplayName { get; set; }
-    public virtual ICollection<User> Users { get; } = new List<User>();
-    public virtual ICollection<Case> Cases { get; } = new List<Case>();
+    public virtual IEnumerable<User> Users { get; } = new List<User>();
+    public virtual IEnumerable<Case> Cases { get; } = new List<Case>();
     public virtual OrganizationConfiguration? Configuration { get; set; }
 }

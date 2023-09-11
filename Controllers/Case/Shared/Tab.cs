@@ -60,7 +60,7 @@ public class SharedTabsController : ControllerBase
     }
 
     // GET: /tab/5
-    [Route("/case/{caseId}/shared/tab/{tabId}")]
+    [Route("/case/{caseId:guid}/shared/tab/{tabId:guid}")]
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
@@ -587,7 +587,7 @@ public class SharedTabsController : ControllerBase
     }
 
     // POST  /case/5/contemporaneous-notes/image
-    [HttpPost("/case/{caseId}/shared/tab/{tabId}/content/image")]
+    [HttpPost("/case/{caseId:guid}/shared/tab/{tabId:guid}/content/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]

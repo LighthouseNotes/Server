@@ -12,7 +12,7 @@ public class Case
     public DateTime Modified { get; set; }
     public DateTime Created { get; set; }
     public required string Status { get; set; }
-    public required ICollection<User> Users { get; set; }
+    public required ICollection<User> Users { get; init; }
 }
 
 public class AddCase

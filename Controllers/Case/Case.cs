@@ -83,7 +83,7 @@ public class CasesController : ControllerBase
     }
 
     // GET: /case/5
-    [HttpGet("{caseId}")]
+    [HttpGet("{caseId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
@@ -146,7 +146,7 @@ public class CasesController : ControllerBase
     }
 
     // PUT: /case/5
-    [HttpPut("{caseId}")]
+    [HttpPut("{caseId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
