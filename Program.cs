@@ -174,7 +174,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // Audit Logging Middleware 
-app.UseAuditMiddleware(_ => _
+app.UseAuditMiddleware(auditMiddleware => auditMiddleware 
     .WithEventType("HTTP")
     .IncludeHeaders()
     .IncludeResponseHeaders()
