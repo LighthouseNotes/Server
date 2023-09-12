@@ -24,17 +24,8 @@ public class DatabaseContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Create a ICU Collation
-        modelBuilder.HasCollation("NOCASE", "en", "icu", false);
-
-        // Use ICU Collation on Organization Name
-        modelBuilder.Entity<Database.Organization>().Property(c => c.Name)
-            .UseCollation("NOCASE");
-
-        // Use ICU Collation on Organization Dispaly Name
-        modelBuilder.Entity<Database.Organization>().Property(c => c.DisplayName)
-            .UseCollation("NOCASE");
-
+        modelBuilder.HasPostgresExtension("pg_trgm");
+        
         // Organization Configuration Relationship
         modelBuilder.Entity<Database.Organization>()
             .HasOne(e => e.Configuration)

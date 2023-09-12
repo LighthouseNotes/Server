@@ -20,7 +20,7 @@ public class OrganizationController : ControllerBase
     {
         // Search both Name and DisplayName for the provided organization query Note: both Name and DisplayName columns are case insensitive
         Database.Organization? organization = await _dbContext.Organization
-            .Where(o => o.Name == organizationQuery || o.DisplayName == organizationQuery).FirstOrDefaultAsync();
+            .Where(o => EF.Functions.TrigramsSimilarity(o.Name, organizationQuery) > 0.6 || EF.Functions.TrigramsSimilarity(o.DisplayName, organizationQuery) > 0.6).FirstOrDefaultAsync();
 
         // If the organization could not be found then return a HTTP 404 error
         if (organization == null)
