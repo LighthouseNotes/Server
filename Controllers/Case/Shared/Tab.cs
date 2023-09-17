@@ -52,7 +52,7 @@ public class SharedTabsController : ControllerBase
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
-        return sCase.Tabs.Where(t => t.User == user).Select(t => new API.Tab
+        return sCase.SharedTabs.Select(t => new API.Tab
         {
             Id = t.Id,
             Name = t.Name
@@ -93,17 +93,12 @@ public class SharedTabsController : ControllerBase
         auditScope.SetCustomField("UserID", user.Id);
 
         // Fetch tab from the database
-        Database.Tab? tab = sCase.Tabs.SingleOrDefault(t => t.Id == tabId);
+        Database.SharedTab tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == tabId);
 
         // If tab is null then return HTTP 404 error
         if (tab == null)
             return NotFound($"A tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
-
-        // If the user does not have access to the tab then return HTTP 401 error
-        if (tab.User != user)
-            return Unauthorized($"You do not have permission to access the tab with the ID `{tabId}`!");
-
-
+        
         return new API.Tab
         {
             Id = tab.Id,
