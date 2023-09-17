@@ -96,8 +96,8 @@ public class UsersController : ControllerBase
 
         // If the user is trying to fetch themselves then set user to requesting user if not fetch the user
         Database.User? user = requestingUser.Id == userId
-            ? organization.Users.FirstOrDefault(u => u.Id == userId)
-            : requestingUser;
+            ? requestingUser
+            : organization.Users.FirstOrDefault(u => u.Id == userId);
 
         // If user does not exist in organization return a HTTP 403 error
         if (user == null)
