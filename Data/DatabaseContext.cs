@@ -1,10 +1,63 @@
-﻿namespace LighthouseNotesServer.Data;
+﻿using Microsoft.EntityFrameworkCore.ChangeTracking;
+
+namespace LighthouseNotesServer.Data;
 
 public class DatabaseContext : DbContext
 {
     public DatabaseContext(DbContextOptions<DatabaseContext> options)
         : base(options)
     {
+    }
+    
+    // Override SaveChanges function and call OnBeforeSaving (Chestnut, 2019)
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        OnBeforeSaving();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    // Override SaveChangesAsync function and call OnBeforeSaving (Chestnut, 2019)
+    public override async Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess, 
+        CancellationToken cancellationToken = default(CancellationToken)
+    )
+    {
+        OnBeforeSaving();
+        return (await base.SaveChangesAsync(acceptAllChangesOnSuccess,
+            cancellationToken));
+    }
+
+    // Before saving changes to the Database Update or Set Modified / Created time (Chestnut, 2019)
+    private void OnBeforeSaving()
+    {
+        IEnumerable<EntityEntry> entries = ChangeTracker.Entries();
+        DateTime utcNow = DateTime.UtcNow;
+
+        foreach (EntityEntry entry in entries)
+        {
+            // for entities that inherit from BaseEntity,
+            // set UpdatedOn / CreatedOn appropriately
+            if (entry.Entity is Database.Base trackable)
+            {
+                switch (entry.State)
+                {
+                    case EntityState.Modified:
+                        // set the updated date to "now"
+                        trackable.Modified = utcNow;
+
+                        // mark property as "don't touch"
+                        // we don't want to update on a Modify operation
+                        entry.Property("Created").IsModified = false;
+                        break;
+
+                    case EntityState.Added:
+                        // set both updated and created date to "now"
+                        trackable.Created = utcNow;
+                        trackable.Modified = utcNow;
+                        break;
+                }
+            }
+        }
     }
 
     public DbSet<Database.Organization> Organization => Set<Database.Organization>();
