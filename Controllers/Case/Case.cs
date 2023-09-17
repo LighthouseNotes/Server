@@ -395,10 +395,8 @@ public class CasesController : ControllerBase
             Organization = user.Organization,
             DisplayId = caseAddObject.DisplayId,
             Name = caseAddObject.Name,
-            DisplayName = $"{caseAddObject.DisplayId} - {caseAddObject.Name}",
+            DisplayName = $"{caseAddObject.DisplayId} {caseAddObject.Name}",
             SIO = SIOUser,
-            Modified = DateTime.Now.ToUniversalTime(),
-            Created = DateTime.Now.ToUniversalTime(),
             Status = "Open"
         };
 
