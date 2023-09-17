@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class Organization
+public class Organization : Base
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]

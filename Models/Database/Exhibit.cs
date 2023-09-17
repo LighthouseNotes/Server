@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class Exhibit
+public class Exhibit : Base
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

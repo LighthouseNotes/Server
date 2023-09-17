@@ -2,7 +2,7 @@
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class CaseUser
+public class CaseUser : Base
 {
     [Key] public int Id { get; set; }
 

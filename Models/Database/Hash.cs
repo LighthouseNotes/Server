@@ -2,7 +2,7 @@
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class Hash
+public class Hash : Base
 {
     [Key] public int Id { get; set; }
 

@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class Tab
+public class Tab : Base
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

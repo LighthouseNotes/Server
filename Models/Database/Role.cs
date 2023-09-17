@@ -2,7 +2,7 @@
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class Role
+public class Role : Base
 {
     [Key] public int Id { get; set; }
 

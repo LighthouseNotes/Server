@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class Case
+public class Case : Base
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -14,8 +14,6 @@ public class Case
     public required string Name { get; set; }
     public required string DisplayName { get; set; }
     public virtual User SIO { get; set; } = null!;
-    public DateTime Modified { get; set; }
-    public DateTime Created { get; init; }
     public required string Status { get; set; }
     public virtual ICollection<CaseUser> Users { get; } = new List<CaseUser>();
     public virtual ICollection<Exhibit> Exhibits { get; } = new List<Exhibit>();

@@ -2,7 +2,7 @@
 
 namespace LighthouseNotesServer.Models.Database;
 
-public class OrganizationConfiguration
+public class OrganizationConfiguration : Base
 {
     [Key] public int Id { get; set; }
 
