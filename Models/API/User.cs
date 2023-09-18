@@ -27,9 +27,9 @@ public class AddUser
 
 public class UpdateUser
 {
-    public string? JobTitle { get; set; } = null;
-    public string? GivenName { get; set; } = null;
-    public string? LastName { get; set; } = null;
-    public string? DisplayName { get; set; } = null;
-    public string? EmailAddress { get; set; } = null;
+    public required string JobTitle { get; set; }
+    public required string GivenName { get; set; }
+    public required string LastName { get; set; }
+    public required string DisplayName { get; set; }
+    public required string EmailAddress { get; set; }
 }

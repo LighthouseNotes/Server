@@ -149,12 +149,12 @@ public class UsersController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", requestingUser.Id);
-
-        // If the user is trying to update themselves then set user to requesting user if not fetch the user
+        
+        // If the user is trying to fetch themselves then set user to requesting user if not fetch the user
         Database.User? user = requestingUser.Id == userId
-            ? organization.Users.FirstOrDefault(u => u.Id == userId)
-            : requestingUser;
-
+            ? requestingUser
+            : organization.Users.FirstOrDefault(u => u.Id == userId);
+        
         // If user does not exist in organization return a HTTP 403 error
         if (user == null)
             return Unauthorized(
@@ -167,7 +167,7 @@ public class UsersController : ControllerBase
                 "You do not have permissions to update the details of a user that is not yourself");
 
         // If job title is provided updated it
-        if (updatedUser.JobTitle != null)
+        if (updatedUser.JobTitle != user.JobTitle)
         {
             // If the user is updating themselves display a slightly different log message 
             if (userId == requestingUser.Id)
@@ -193,7 +193,7 @@ public class UsersController : ControllerBase
         }
 
         // If given name is provided updated it
-        if (updatedUser.GivenName != null)
+        if (updatedUser.GivenName != user.GivenName)
         {
             // Log user given name change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -208,7 +208,7 @@ public class UsersController : ControllerBase
         }
 
         // If last name is provided updated it
-        if (updatedUser.LastName != null)
+        if (updatedUser.LastName != user.LastName)
         {
             // Log user last name change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -223,7 +223,7 @@ public class UsersController : ControllerBase
         }
 
         // If display name is provided updated it
-        if (updatedUser.DisplayName != null)
+        if (updatedUser.DisplayName != user.DisplayName)
         {
             // If the user is updating themselves display a slightly different log message 
             if (userId == requestingUser.Id)
@@ -250,7 +250,7 @@ public class UsersController : ControllerBase
         }
 
         // If email address is provided updated it
-        if (updatedUser.EmailAddress != null)
+        if (updatedUser.EmailAddress != user.EmailAddress)
         {
             // Log user email address change
             await _auditContext.LogAsync("Lighthouse Notes",
