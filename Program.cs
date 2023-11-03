@@ -1,8 +1,10 @@
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Audit.PostgreSql.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
@@ -12,14 +14,33 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 ILoggerFactory loggerFactory = LoggerFactory.Create(loggingBuilder => { loggingBuilder.AddSimpleConsole(); });
 
-// Use lower case URLs
+// Add routing 
 builder.Services.AddRouting(options =>
 {
+    // Use lower case URLs and lower case query strings
     options.LowercaseUrls = true;
     options.LowercaseQueryStrings = true;
 });
 
-// Add database
+//  Add Certificate forwarding 
+builder.Services.AddCertificateForwarding(options =>
+{
+    options.CertificateHeader = "X-SSL-CERT";
+    options.HeaderConverter = (headerValue) =>
+    {
+        X509Certificate2 clientCertificate = new(System.Web.HttpUtility.UrlDecodeToBytes(headerValue));
+        return clientCertificate;
+    };
+});
+
+// Add forward headers for reverse proxy 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
+
+// Add database connection
 builder.Services.AddDbContext<DatabaseContext>(options =>
 {
     options.UseLazyLoadingProxies();
@@ -27,20 +48,6 @@ builder.Services.AddDbContext<DatabaseContext>(options =>
                       throw new InvalidOperationException("Connection string 'DatabaseContext' not found."));
     options.EnableSensitiveDataLogging();
 });
-
-// Add cross origin
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(
-        corsPolicyBuilder =>
-        {
-            corsPolicyBuilder.WithOrigins("https://localhost:5001")
-                .AllowAnyMethod()
-                .AllowAnyHeader()
-                .AllowCredentials();
-        });
-});
-
 
 // Add authentication 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -161,16 +168,27 @@ Configuration.Setup()
 // Build the app
 WebApplication app = builder.Build();
 
-// If app is development 
+// If environment is development
 if (app.Environment.IsDevelopment())
 {
+    // Use swagger and swagger UI
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
         options.RoutePrefix = string.Empty;
     });
+    
+    // Developer exception page for detailed exception 
     app.UseDeveloperExceptionPage();
+}
+
+// If environment is production
+if (app.Environment.IsProduction())
+{
+    // Use certificate forwarding and header forwarding as production environment runs behind a reverse proxy
+    app.UseCertificateForwarding();
+    app.UseForwardedHeaders();
 }
 
 // Audit Logging Middleware 
@@ -184,9 +202,8 @@ app.UseAuditMiddleware(auditMiddleware => auditMiddleware
 // HTTPS Redirection
 app.UseHttpsRedirection();
 
-// Routing and cross origin
+// Routing
 app.UseRouting();
-app.UseCors();
 
 // Use Authentication and Authorization 
 app.UseAuthentication();
@@ -195,5 +212,5 @@ app.UseAuthorization();
 // Map controllers
 app.MapControllers();
 
-// Run 
+// Run app
 app.Run();
