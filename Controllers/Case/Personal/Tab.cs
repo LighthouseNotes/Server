@@ -212,7 +212,7 @@ public class TabsController : ControllerBase
         MinioClient minio = new MinioClient()
             .WithEndpoint(organization.Configuration.S3Endpoint)
             .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(false)
+            .WithSSL(organization.Configuration.S3NetworkEncryption)
             .Build();
 
         // Create a variable with filepath - note removing auth0| from filepath 
@@ -220,7 +220,7 @@ public class TabsController : ControllerBase
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
         ).ConfigureAwait(false);
 
         // If bucket does not exist return HTTP 500 error
@@ -233,7 +233,7 @@ public class TabsController : ControllerBase
         try
         {
             objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
             );
         }
@@ -257,7 +257,7 @@ public class TabsController : ControllerBase
 
         // Get object and copy file contents to stream
         await minio.GetObjectAsync(new GetObjectArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
             .WithObject(objectPath)
             .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
         );
@@ -335,7 +335,7 @@ public class TabsController : ControllerBase
         MinioClient minio = new MinioClient()
             .WithEndpoint(organization.Configuration.S3Endpoint)
             .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(false)
+            .WithSSL(organization.Configuration.S3NetworkEncryption)
             .Build();
 
         // Create a variable with filepath - note removing auth0| from filepath 
@@ -343,7 +343,7 @@ public class TabsController : ControllerBase
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
         ).ConfigureAwait(false);
 
         // If bucket does not exist return HTTP 500 error
@@ -354,7 +354,7 @@ public class TabsController : ControllerBase
         try
         {
             await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
             );
 
@@ -368,7 +368,7 @@ public class TabsController : ControllerBase
 
             // Save the updated file to the s3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
                 .WithStreamData(memoryStream)
                 .WithObjectSize(memoryStream.Length)
@@ -378,7 +378,7 @@ public class TabsController : ControllerBase
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
             );
 
@@ -428,7 +428,7 @@ public class TabsController : ControllerBase
 
             // Save file to s3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
                 .WithStreamData(memoryStream)
                 .WithObjectSize(memoryStream.Length)
@@ -437,7 +437,7 @@ public class TabsController : ControllerBase
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
             );
 
@@ -533,7 +533,7 @@ public class TabsController : ControllerBase
         MinioClient minio = new MinioClient()
             .WithEndpoint(organization.Configuration.S3Endpoint)
             .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(false)
+            .WithSSL(organization.Configuration.S3NetworkEncryption)
             .Build();
 
         // Create a variable for object path NOTE: removing auth0| from objectPath 
@@ -541,7 +541,7 @@ public class TabsController : ControllerBase
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
         ).ConfigureAwait(false);
 
         // If bucket does not exist return HTTP 500 error
@@ -550,7 +550,7 @@ public class TabsController : ControllerBase
 
         // Fetch object metadata
         ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
             .WithObject(objectPath)
         );
 
@@ -567,7 +567,7 @@ public class TabsController : ControllerBase
 
         // Get object and copy file contents to stream
         await minio.GetObjectAsync(new GetObjectArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
             .WithObject(objectPath)
             .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
         );
@@ -590,7 +590,7 @@ public class TabsController : ControllerBase
 
         // Fetch presigned url for object  
         string url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
             .WithObject(objectPath)
             .WithExpiry(3600)
         );
@@ -654,12 +654,12 @@ public class TabsController : ControllerBase
         MinioClient minio = new MinioClient()
             .WithEndpoint(organization.Configuration.S3Endpoint)
             .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(false)
+            .WithSSL(organization.Configuration.S3NetworkEncryption)
             .Build();
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket("lighthouse-notes")
+            .WithBucket(organization.Configuration.S3BucketName)
         ).ConfigureAwait(false);
 
         // If bucket does not exist return HTTP 500 error
@@ -686,7 +686,7 @@ public class TabsController : ControllerBase
 
             // Save file to s3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
                 .WithStreamData(memoryStream)
                 .WithObjectSize(memoryStream.Length)
@@ -695,7 +695,7 @@ public class TabsController : ControllerBase
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket("lighthouse-notes")
+                .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
             );
 
