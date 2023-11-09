@@ -13,5 +13,6 @@ public class Organization : Base
     public required string DisplayName { get; set; }
     public virtual IEnumerable<User> Users { get; } = new List<User>();
     public virtual IEnumerable<Case> Cases { get; } = new List<Case>();
+    public virtual IEnumerable<Event> Events { get; } = new List<Event>();
     public virtual OrganizationConfiguration? Configuration { get; set; }
 }
