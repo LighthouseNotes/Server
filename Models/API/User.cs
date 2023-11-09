@@ -32,4 +32,5 @@ public class UpdateUser
     public required string LastName { get; set; }
     public required string DisplayName { get; set; }
     public required string EmailAddress { get; set; }
+    public required List<string> Roles { get; set; }
 }

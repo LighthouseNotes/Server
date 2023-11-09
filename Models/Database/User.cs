@@ -15,8 +15,10 @@ public class User : Base
     public required string LastName { get; set; }
     public required string EmailAddress { get; set; }
     public required string ProfilePicture { get; set; }
-    public virtual IEnumerable<Role> Roles { get; } = new List<Role>();
+    public virtual ICollection<Role> Roles { get; set; } = new List<Role>();
     public virtual Organization Organization { get; set; } = null!;
+    public virtual UserSettings Settings { get; set; } = null!;
+    public virtual IEnumerable<Event> Events { get; } = new List<Event>();
     public virtual ICollection<CaseUser> Cases { get; set; } = new List<CaseUser>();
     public virtual ICollection<Tab> Tabs { get; set; } = new List<Tab>();
 }

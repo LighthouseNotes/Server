@@ -119,6 +119,46 @@ public class UsersController : ControllerBase
             Roles = user.Roles.Select(r => r.Name).ToList()
         };
     }
+    
+      // GET: /user/settings
+    [HttpGet("settings")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [Authorize(Roles = "user")]
+    public async Task<ActionResult<API.UserSettings>> GetUserSettings()
+    {
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks();
+
+        // If preflight checks returned an error return it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
+
+        // If organization or case are null return HTTP 500 error
+        if (preflightResponse.Organization == null || preflightResponse.User == null)
+            return Problem(
+                "Preflight checks failed with an unknown error!"
+            );
+
+        // Set variables from preflight response
+        Database.Organization organization = preflightResponse.Organization;
+        Database.User user = preflightResponse.User;
+
+        // Log OrganizationID and UserID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organization.Id);
+        auditScope.SetCustomField("UserID", user.Id);
+
+        return new API.UserSettings
+        {
+            TimeZone = user.Settings.TimeZone,
+            DateFormat = user.Settings.DateFormat,
+            TimeFormat = user.Settings.TimeFormat,
+            Locale = user.Settings.Locale
+        };
+
+    }
 
     // PUT: /User/5
     [HttpPut("{userId}")]
@@ -263,6 +303,12 @@ public class UsersController : ControllerBase
 
             user.EmailAddress = updatedUser.EmailAddress;
         }
+        
+        // If roles is provided update it
+        if (updatedUser.Roles != user.Roles.Select(r => r.Name).ToList())
+        {
+            user.Roles = updatedUser.Roles.Select(r => new Database.Role { Name = r }).ToList();
+        };
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
@@ -326,11 +372,7 @@ public class UsersController : ControllerBase
         // Add the users roles
         foreach (string role in userToAdd.Roles)
         {
-            await _dbContext.Role.AddAsync(new Database.Role
-            {
-                Name = role,
-                User = userModel
-            });
+            userModel.Roles.Add(new Database.Role { Name = role});
         }
 
         try
