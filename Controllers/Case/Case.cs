@@ -51,6 +51,11 @@ public class CasesController : ControllerBase
         if (organization.Users.All(u => u.Id != userId))
             return Unauthorized(
                 $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!");
+        
+        // Log OrganizationID and UserID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organization.Id);
+        auditScope.SetCustomField("UserID", userId);
 
         // Return all cases the requesting user has access to
         return organization.Cases.Select(c => new API.Case
@@ -372,6 +377,11 @@ public class CasesController : ControllerBase
 
         // Fetch user from database
         Database.User user = organization.Users.Single(u => u.Id == userId);
+        
+        // Log OrganizationID and UserID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organization.Id);
+        auditScope.SetCustomField("UserID", user.Id);
 
         // If no SIO is provided then the user making the request is the SIO
         caseAddObject.SIOUserId ??= userId;
@@ -405,7 +415,7 @@ public class CasesController : ControllerBase
             new
             {
                 Action =
-                    $" `The case `{sCase.DisplayName}` was created by `{user.DisplayName} ({user.JobTitle})`.",
+                    $"The case `{sCase.DisplayName}` was created by `{user.DisplayName} ({user.JobTitle})`.",
                 UserID = userId, OrganizationID = organizationId
             });
 
@@ -442,7 +452,7 @@ public class CasesController : ControllerBase
                 new
                 {
                     Action =
-                        $" `{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName} ` by `{user.DisplayName} ({user.JobTitle})`.",
+                        $"`{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName}` by `{user.DisplayName} ({user.JobTitle})`.",
                     UserID = userId, OrganizationID = organizationId
                 });
         }
