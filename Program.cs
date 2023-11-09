@@ -159,11 +159,14 @@ Configuration.Setup()
     .UsePostgreSql(config => config
         .ConnectionString(builder.Configuration.GetConnectionString("DatabaseContext") ??
                           throw new InvalidOperationException("Connection string 'DatabaseContext' not found."))
-        .TableName("event")
-        .IdColumnName("id")
-        .DataColumn("data", DataType.JSONB)
-        .LastUpdatedColumnName("updated_date")
-        .CustomColumn("event_type", ev => ev.EventType));
+        .TableName("Event")
+        .IdColumnName("Id")
+        .DataColumn("Data")
+        .LastUpdatedColumnName("Updated")
+        .CustomColumn("EventType", ev => ev.EventType)
+        .CustomColumn("OrganizationId", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "OrganizationID").Value)
+        .CustomColumn("UserId", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "UserID").Value));
+
 
 // Build the app
 WebApplication app = builder.Build();
@@ -192,7 +195,7 @@ if (app.Environment.IsProduction())
 }
 
 // Audit Logging Middleware 
-app.UseAuditMiddleware(auditMiddleware => auditMiddleware 
+app.UseAuditMiddleware(auditMiddleware => auditMiddleware
     .WithEventType("HTTP")
     .IncludeHeaders()
     .IncludeResponseHeaders()
