@@ -52,11 +52,17 @@ public class CasesController : ControllerBase
             return Unauthorized(
                 $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!");
         
+        // Fetch user from database
+        Database.User user = organization.Users.First(u => u.Id == userId);
+        
         // Log OrganizationID and UserID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", userId);
 
+        // Get user timezone 
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
+        
         // Return all cases the requesting user has access to
         return organization.Cases.Select(c => new API.Case
         {
@@ -72,8 +78,8 @@ public class CasesController : ControllerBase
                     { Name = c.SIO.Organization.DisplayName, DisplayName = c.SIO.Organization.DisplayName },
                 Roles = c.SIO.Roles.Select(r => r.Name).ToList()
             },
-            Created = c.Created,
-            Modified = c.Modified,
+            Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
+            Modified =  TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
             Status = c.Status,
             Users = c.Users.Select(cu => new API.User
             {
@@ -118,6 +124,9 @@ public class CasesController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
+        
+        // Get user timezone 
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
 
         // Return requested case details
         return new API.Case
@@ -135,8 +144,8 @@ public class CasesController : ControllerBase
                     { Name = sCase.SIO.Organization.DisplayName, DisplayName = sCase.SIO.Organization.DisplayName },
                 Roles = sCase.SIO.Roles.Select(r => r.Name).ToList()
             },
-            Created = sCase.Created,
-            Modified = sCase.Modified,
+            Created = TimeZoneInfo.ConvertTimeFromUtc(sCase.Created, timeZone),
+            Modified =  TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
@@ -456,7 +465,9 @@ public class CasesController : ControllerBase
                     UserID = userId, OrganizationID = organizationId
                 });
         }
-
+        
+        // Get user timezone 
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
@@ -477,8 +488,8 @@ public class CasesController : ControllerBase
                     { Name = sCase.SIO.Organization.DisplayName, DisplayName = sCase.SIO.Organization.DisplayName },
                 Roles = sCase.SIO.Roles.Select(r => r.Name).ToList()
             },
-            Created = sCase.Created,
-            Modified = sCase.Modified,
+            Created = TimeZoneInfo.ConvertTimeFromUtc(sCase.Created, timeZone),
+            Modified =  TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
