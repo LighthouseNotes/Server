@@ -65,45 +65,65 @@ public class UsersController : ControllerBase
 
 
     // GET: /user/5
-    [HttpGet("{userId}")]
+    [HttpGet("{userId?}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<API.User>> GetUser(string userId)
+    public async Task<ActionResult<API.User>> GetUser(string? userId)
     {
-        // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks();
+        // Get user id from claim
+        string? requestingUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-        // If preflight checks returned an error return it here
-        if (preflightResponse.Error != null) return preflightResponse.Error;
+        // If user id is null then it does not exist in JWT so return a HTTP 400 error
+        if (requestingUserId == null)
+            return BadRequest("User ID can not be found in the JSON Web Token (JWT)!");
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+        // Get organization id from claim
+        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User requestingUser = preflightResponse.User;
+        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        if (organizationId == null)
+            return BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!");
+
+        // Fetch organization from the database by primary key
+        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+
+        // If organization is null then it does not exist so return a HTTP 404 error
+        if (organization == null)
+            return NotFound($"A organization with the ID `{organizationId}` can not be found!");
+
+        // If user does not exist in organization return a HTTP 403 error
+        if (organization.Users.All(u => u.Id != requestingUserId))
+            return Unauthorized(
+                $"A user with the ID `{requestingUserId}` was not found in the organization with the ID `{organizationId}`!");
+
+        // Fetch user from database
+        Database.User requestingUser = organization.Users.Single(u => u.Id == requestingUserId);
 
         // Log OrganizationID and UserID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", requestingUser.Id);
 
-        // If the user is trying to fetch themselves then set user to requesting user if not fetch the user
-        Database.User? user = requestingUser.Id == userId
-            ? requestingUser
-            : organization.Users.FirstOrDefault(u => u.Id == userId);
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (user == null)
-            return Unauthorized(
-                $"A user with the ID `{userId}` was not found in the organization with the ID `{organization.Id}`!");
-
+        Database.User? user;
+        // If provided user Id is not set, or user is trying to fetch themselves set user to requestingUser
+        if (string.IsNullOrEmpty(userId) || requestingUser.Id != userId)
+        {
+            user = requestingUser;
+        }
+        // Fetch the user based on the provide user Id
+        else
+        {
+            user = organization.Users.FirstOrDefault(u => u.Id == userId);
+            
+            // If user does not exist in organization return a HTTP 403 error
+            if (user == null)
+                return Unauthorized(
+                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organization.Id}`!");
+        }
+        
         // Return the user
         return new API.User
         {
@@ -120,87 +140,66 @@ public class UsersController : ControllerBase
         };
     }
     
-      // GET: /user/settings
-    [HttpGet("settings")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult<API.UserSettings>> GetUserSettings()
-    {
-        // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks();
-
-        // If preflight checks returned an error return it here
-        if (preflightResponse.Error != null) return preflightResponse.Error;
-
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
-
-        // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
-
-        // Log OrganizationID and UserID
-        IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
-
-        return new API.UserSettings
-        {
-            TimeZone = user.Settings.TimeZone,
-            DateFormat = user.Settings.DateFormat,
-            TimeFormat = user.Settings.TimeFormat,
-            Locale = user.Settings.Locale
-        };
-
-    }
-
     // PUT: /User/5
-    [HttpPut("{userId}")]
+    [HttpPut("{userId?}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user,organization-administrator")]
-    public async Task<IActionResult> UpdateUser(string userId, API.UpdateUser updatedUser)
+    public async Task<IActionResult> UpdateUser(string? userId, API.UpdateUser updatedUser)
     {
-        // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks();
+         // Get user id from claim
+        string? requestingUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-        // If preflight checks returned an error return it here
-        if (preflightResponse.Error != null) return preflightResponse.Error;
+        // If user id is null then it does not exist in JWT so return a HTTP 400 error
+        if (requestingUserId == null)
+            return BadRequest("User ID can not be found in the JSON Web Token (JWT)!");
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+        // Get organization id from claim
+        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User requestingUser = preflightResponse.User;
+        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        if (organizationId == null)
+            return BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!");
+
+        // Fetch organization from the database by primary key
+        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+
+        // If organization is null then it does not exist so return a HTTP 404 error
+        if (organization == null)
+            return NotFound($"A organization with the ID `{organizationId}` can not be found!");
+
+        // If user does not exist in organization return a HTTP 403 error
+        if (organization.Users.All(u => u.Id != requestingUserId))
+            return Unauthorized(
+                $"A user with the ID `{requestingUserId}` was not found in the organization with the ID `{organizationId}`!");
+
+        // Fetch user from database
+        Database.User requestingUser = organization.Users.Single(u => u.Id == requestingUserId);
 
         // Log OrganizationID and UserID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", requestingUser.Id);
-        
-        // If the user is trying to fetch themselves then set user to requesting user if not fetch the user
-        Database.User? user = requestingUser.Id == userId
-            ? requestingUser
-            : organization.Users.FirstOrDefault(u => u.Id == userId);
-        
-        // If user does not exist in organization return a HTTP 403 error
-        if (user == null)
-            return Unauthorized(
-                $"A user with the ID `{userId}` was not found in the organization with the ID `{organization.Id}`!");
 
-
+        Database.User? user;
+        // If provided user Id is not set, or user is trying to fetch themselves set user to requestingUser
+        if (string.IsNullOrEmpty(userId) || requestingUser.Id != userId)
+        {
+            user = requestingUser;
+        }
+        // Fetch the user based on the provide user Id
+        else
+        {
+            user = organization.Users.FirstOrDefault(u => u.Id == userId);
+            
+            // If user does not exist in organization return a HTTP 403 error
+            if (user == null)
+                return Unauthorized(
+                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organization.Id}`!");
+        }
+        
         // If requesting user id is not equal to the provided id or requesting users is not an organization administrator return HTTP 401
         if (requestingUser.Id != userId && !User.IsInRole("organization-administrator"))
             return Unauthorized(
@@ -308,7 +307,7 @@ public class UsersController : ControllerBase
         if (updatedUser.Roles != user.Roles.Select(r => r.Name).ToList())
         {
             user.Roles = updatedUser.Roles.Select(r => new Database.Role { Name = r }).ToList();
-        };
+        }
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
@@ -363,7 +362,8 @@ public class UsersController : ControllerBase
             DisplayName = userToAdd.DisplayName,
             EmailAddress = userToAdd.EmailAddress,
             ProfilePicture = userToAdd.ProfilePicture,
-            Organization = organization
+            Organization = organization,
+            Settings = new Database.UserSettings { Locale = "en-GB", DateFormat = "dddd dd MMMM yyyy", TimeFormat = "HH:SS", TimeZone = "GMT"}
         };
 
         // Add the user
