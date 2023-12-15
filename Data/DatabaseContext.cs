@@ -59,8 +59,6 @@ public class DatabaseContext : DbContext
             }
         }
     }
-
-    public DbSet<Database.ManagementApi> ManagementApi => Set<Database.ManagementApi>();
     
     public DbSet<Database.Event> Event => Set<Database.Event>();
     
