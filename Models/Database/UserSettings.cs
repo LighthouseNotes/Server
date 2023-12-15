@@ -5,7 +5,7 @@ namespace LighthouseNotesServer.Models.Database;
 public class UserSettings : Base
 {
     [Key]
-    public required int Id { get; set; }
+    public int Id { get; set; }
     public virtual User? User { get; set; } = null!;
     public required string TimeZone { get; set; }
     public required string DateFormat { get; set; }
