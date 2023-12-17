@@ -169,7 +169,8 @@ public class UsersSettingsController : ControllerBase
              
              user.Settings.Locale = userSettings.Locale;
          }
-         
+
+         await _dbContext.SaveChangesAsync();
          return NoContent();
      }
      
