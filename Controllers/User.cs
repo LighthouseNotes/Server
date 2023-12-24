@@ -206,7 +206,7 @@ public class UsersController : ControllerBase
                 "You do not have permissions to update the details of a user that is not yourself");
 
         // If job title is provided updated it
-        if (updatedUser.JobTitle != user.JobTitle)
+        if (!string.IsNullOrWhiteSpace(updatedUser.JobTitle) && updatedUser.JobTitle != user.JobTitle)
         {
             // If the user is updating themselves display a slightly different log message 
             if (userId == requestingUser.Id)
@@ -232,7 +232,7 @@ public class UsersController : ControllerBase
         }
 
         // If given name is provided updated it
-        if (updatedUser.GivenName != user.GivenName)
+        if (!string.IsNullOrWhiteSpace(updatedUser.GivenName) &&  updatedUser.GivenName != user.GivenName)
         {
             // Log user given name change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -247,7 +247,7 @@ public class UsersController : ControllerBase
         }
 
         // If last name is provided updated it
-        if (updatedUser.LastName != user.LastName)
+        if (!string.IsNullOrWhiteSpace(updatedUser.LastName) &&  updatedUser.LastName != user.LastName)
         {
             // Log user last name change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -262,7 +262,7 @@ public class UsersController : ControllerBase
         }
 
         // If display name is provided updated it
-        if (updatedUser.DisplayName != user.DisplayName)
+        if (!string.IsNullOrWhiteSpace(updatedUser.DisplayName) &&  updatedUser.DisplayName != user.DisplayName)
         {
             // If the user is updating themselves display a slightly different log message 
             if (userId == requestingUser.Id)
@@ -289,7 +289,7 @@ public class UsersController : ControllerBase
         }
 
         // If email address is provided updated it
-        if (updatedUser.EmailAddress != user.EmailAddress)
+        if (!string.IsNullOrWhiteSpace(updatedUser.EmailAddress) && updatedUser.EmailAddress != user.EmailAddress)
         {
             // Log user email address change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -303,9 +303,40 @@ public class UsersController : ControllerBase
             user.EmailAddress = updatedUser.EmailAddress;
         }
         
-        // If roles is provided update it
-        if (updatedUser.Roles != user.Roles.Select(r => r.Name).ToList())
+        // If profile picture is provided update it
+        if (!string.IsNullOrWhiteSpace(updatedUser.ProfilePicture) && updatedUser.ProfilePicture != user.ProfilePicture)
         {
+            // If requesting user is not the user that's being updated return 403 Forbidden
+            if (user.Id != requestingUserId)
+            {
+                return Forbid(
+                    "You are trying to update a user profile picture which is not your own. Only a user can update their own profile picture!");
+            }
+            
+            // Log user profile picture change
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"User profile picture was updated from `{user.ProfilePicture}` to `{updatedUser.ProfilePicture}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
+                    UserID = requestingUser.Id, OrganizationID = organization.Id
+                });
+            
+            user.ProfilePicture = updatedUser.ProfilePicture;
+        }
+        
+        // If roles is provided update it
+        if (updatedUser.Roles != null && updatedUser.Roles != user.Roles.Select(r => r.Name).ToList())
+        {
+            // Log roles change
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"User roles was updated from `{string.Join("", user.Roles.Select(r => r.Name).ToList())}` to `{string.Join("", updatedUser.Roles)}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
+                    UserID = requestingUser.Id, OrganizationID = organization.Id
+                });
+            
             user.Roles = updatedUser.Roles.Select(r => new Database.Role { Name = r }).ToList();
         }
 

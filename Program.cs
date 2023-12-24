@@ -105,7 +105,9 @@ builder.Services.AddControllers(options =>
         options.OutputFormatters.Add(systemTextJsonOutputFormatter);
         options.InputFormatters.Add(systemTextJsonInputFormatter);
     })
-    .AddJsonOptions(options => { options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles; });
+    .AddJsonOptions(options => { options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
 // Add Swagger
 builder.Services.AddEndpointsApiExplorer();
@@ -167,7 +169,7 @@ Configuration.Setup()
         .CustomColumn("OrganizationId", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "OrganizationID").Value)
         .CustomColumn("UserId", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "UserID").Value));
 
-
+Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense("Mgo+DSMBMAY9C3t2UVhhQlVFfV5AQmBIYVp/TGpJfl96cVxMZVVBJAtUQF1hSn9RdEViWXtdcnZQRmFf;Mjk4OTQ4M0AzMjM0MmUzMDJlMzBORi9PaWU1c1dnRXEydFhxUUUxbWRQbldmL0VhVHQweHpSNFRBaEx0VkpRPQ==");
 // Build the app
 WebApplication app = builder.Build();
 
