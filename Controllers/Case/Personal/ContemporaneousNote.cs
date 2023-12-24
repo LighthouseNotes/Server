@@ -1,3 +1,4 @@
+using System.Reactive.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Net.Http.Headers;
@@ -20,16 +21,15 @@ public class ContemporaneousNotesController : ControllerBase
         _auditContext = new AuditScopeFactory();
     }
 
-
-    // GET:  /case/5/contemporaneous-notes
-    [HttpGet("/case/{caseId:guid}/contemporaneous-notes")]
+    // GET:  /case/5/contemporaneous-note
+    [HttpGet("/case/{caseId:guid}/contemporaneous-note/{fileName}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult> GetContemporaneousNotes(Guid caseId)
+    public async Task<ActionResult> GetContemporaneousNote(Guid caseId, string fileName)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
@@ -54,11 +54,6 @@ public class ContemporaneousNotesController : ControllerBase
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
-
         // Create minio client
         MinioClient minio = new MinioClient()
             .WithEndpoint(organization.Configuration.S3Endpoint)
@@ -68,7 +63,7 @@ public class ContemporaneousNotesController : ControllerBase
 
         // Create a variable for object path NOTE: removing auth0| from objectPath 
         string objectPath =
-            $"cases/{caseId}/{user.Id.Replace("auth0|", "")}/contemporaneous-notes/contemporaneous-notes.txt";
+            $"cases/{caseId}/{user.Id.Replace("auth0|", "")}/contemporaneous-notes/{fileName}";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
@@ -94,7 +89,7 @@ public class ContemporaneousNotesController : ControllerBase
         catch (ObjectNotFoundException)
         {
             return Problem(
-                $"Can not find the S3 object for contemporaneous notes at the following path `{objectPath}`. Its likely the object does not exist because you have not created any notes!");
+                $"Can not find the S3 object for contemporaneous note: `{fileName}` at the following path: `{objectPath}`.");
         }
 
         // Fetch object hash from database
@@ -135,6 +130,91 @@ public class ContemporaneousNotesController : ControllerBase
         return File(memoryStream.ToArray(), "application/octet-stream", "");
     }
 
+
+    // GET:  /case/5/contemporaneous-notes
+    [HttpGet("/case/{caseId:guid}/contemporaneous-notes/{limit:int?}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
+    [Authorize(Roles = "user")]
+    public async Task<ActionResult<API.ContemporaneousNotes>> GetContemporaneousNotes(Guid caseId, int limit = 10)
+    {
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks(caseId);
+
+        // If preflight checks returned an error return it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
+
+        // If organization, user or case are null return HTTP 500 error
+        if (preflightResponse.Organization == null || preflightResponse.User == null ||
+            preflightResponse.SCase == null)
+            return Problem(
+                "Preflight checks failed with an unknown error!"
+            );
+
+        // Set variables from preflight response
+        Database.Organization organization = preflightResponse.Organization;
+        Database.User user = preflightResponse.User;
+
+        // Log OrganizationID and UserID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organization.Id);
+        auditScope.SetCustomField("UserID", user.Id);
+
+        // Create minio client
+        MinioClient minio = new MinioClient()
+            .WithEndpoint(organization.Configuration.S3Endpoint)
+            .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
+            .WithSSL(organization.Configuration.S3NetworkEncryption)
+            .Build();
+
+        // Create a variable for object path NOTE: removing auth0| from objectPath 
+        string objectPrefix =
+            $"cases/{caseId}/{user.Id.Replace("auth0|", "")}/contemporaneous-notes";
+
+        // Check if bucket exists
+        bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
+            .WithBucket(organization.Configuration.S3BucketName)
+        ).ConfigureAwait(false);
+
+        // If bucket does not exist return HTTP 500 error
+        if (!bucketExists)
+            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
+
+        // Create list to store object fileNames in
+        List<string> objectFileNames = new();
+
+        // List objects at object prefix
+        IObservable<Item> observable = minio.ListObjectsAsync(new ListObjectsArgs()
+            .WithBucket(organization.Configuration.S3BucketName)
+            .WithPrefix(objectPrefix)
+            .WithRecursive(true));
+
+        // Loop through objects
+        observable.Subscribe(
+            item => { objectFileNames.Add(item.Key.Split("/").Last()); },
+            ex => { Console.WriteLine("OnError: {0}", ex.Message); }
+        );
+
+        // Wait for observable to complete - // https://github.com/minio/minio-dotnet/issues/294
+        try
+        {
+            observable.Wait();
+        }
+        // Catch observable empty error because no objects exist
+        catch (InvalidOperationException)
+        {
+        }
+        
+        // Return list of object file names
+        return new API.ContemporaneousNotes()
+        {
+            Notes = objectFileNames
+        };
+    }
+
     // POST: /case/5/contemporaneous-notes
     [HttpPost("/case/{caseId:guid}/contemporaneous-notes")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -168,11 +248,6 @@ public class ContemporaneousNotesController : ControllerBase
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
-
         // Create minio client
         MinioClient minio = new MinioClient()
             .WithEndpoint(organization.Configuration.S3Endpoint)
@@ -182,7 +257,7 @@ public class ContemporaneousNotesController : ControllerBase
 
         // Create a variable for object path NOTE: removing auth0| from objectPath 
         string objectPath =
-            $"cases/{caseId}/{user.Id.Replace("auth0|", "")}/contemporaneous-notes/contemporaneous-notes.txt";
+            $"cases/{caseId}/{user.Id.Replace("auth0|", "")}/contemporaneous-notes/{DateTime.UtcNow.ToFileTimeUtc()}.txt";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
@@ -193,93 +268,7 @@ public class ContemporaneousNotesController : ControllerBase
         if (!bucketExists)
             return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
 
-        // Check if object exists
         try
-        {
-            await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Create memory stream to store file contents
-            MemoryStream existingDataStream = new();
-
-            // Get object and copy file contents to stream
-            await minio.GetObjectAsync(new GetObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-                .WithCallbackStream(stream => { stream.CopyTo(existingDataStream); })
-            );
-
-            // Convert new data to bytes
-            byte[] newData = Encoding.UTF8.GetBytes(contemporaneousNotesContent.Content);
-
-            // Convert existing data stream to bytes
-            byte[] existingData = existingDataStream.ToArray();
-
-            // Add new data to existing data
-            byte[] finalData = existingData.Concat(newData).ToArray();
-
-            // Create a data stream to store the updated file contents
-            MemoryStream finalDataStream = new();
-
-            // Write the updated data
-            finalDataStream.Write(finalData);
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            finalDataStream.Position = 0;
-
-            // Save the updated file to the s3 bucket
-            await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-                .WithStreamData(finalDataStream)
-                .WithObjectSize(finalDataStream.Length)
-                .WithContentType("application/octet-stream")
-            );
-
-
-            // Fetch object metadata
-            ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Create MD5 and SHA256
-            using MD5 md5 = MD5.Create();
-            using SHA256 sha256 = SHA256.Create();
-
-            // Generate MD5 and SHA256 hash
-            byte[] md5Hash = await md5.ComputeHashAsync(finalDataStream);
-            byte[] sha256Hash = await sha256.ComputeHashAsync(finalDataStream);
-
-            // Save hash to the database
-            sCase.Hashes.Add(new Database.Hash
-            {
-                User = user,
-                ObjectName = objectMetadata.ObjectName,
-                VersionId = objectMetadata.VersionId,
-                Md5Hash = BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant(),
-                ShaHash = BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant()
-            });
-
-            // Save changes to the database
-            await _dbContext.SaveChangesAsync();
-
-            // Log the addition of content
-            await _auditContext.LogAsync("Lighthouse Notes",
-                new
-                {
-                    Action =
-                        $"User `{user.DisplayName} ({user.JobTitle})` added `{contemporaneousNotesContent.Content}` to contemporaneous notes for `{sCase.DisplayName}`.",
-                    UserID = user.Id, OrganizationID = organization.Id
-                });
-
-            // Return Ok
-            return Ok();
-        }
-        // Object does not exist so create it
-        catch (ObjectNotFoundException)
         {
             // Create memory stream to store file contents
             MemoryStream memoryStream = new();
@@ -375,11 +364,6 @@ public class ContemporaneousNotesController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
 
         // Create minio client
         MinioClient minio = new MinioClient()
@@ -485,11 +469,6 @@ public class ContemporaneousNotesController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
 
         // Create minio client
         MinioClient minio = new MinioClient()

@@ -2,8 +2,8 @@
 
 public class UserSettings
 {
-    public required string TimeZone { get; set; }
-    public required string DateFormat { get; set; }
-    public required string TimeFormat { get; set; }
-    public required string Locale { get; set; }
+    public required string TimeZone { get; init; }
+    public required string DateFormat { get; init; }
+    public required string TimeFormat { get; init; }
+    public required string Locale { get; init; }
 }

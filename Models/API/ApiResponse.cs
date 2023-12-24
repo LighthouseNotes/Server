@@ -1,4 +1,5 @@
-﻿namespace LighthouseNotesServer.Models.API;
+﻿// ReSharper disable UnusedAutoPropertyAccessor.Global
+namespace LighthouseNotesServer.Models.API;
 
 public class ApiResponse
 {

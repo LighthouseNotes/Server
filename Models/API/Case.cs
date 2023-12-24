@@ -1,17 +1,18 @@
 ﻿using System.Runtime.Serialization;
+// ReSharper disable UnusedAutoPropertyAccessor.Global
 
 namespace LighthouseNotesServer.Models.API;
 
 public class Case
 {
-    public Guid Id { get; set; }
-    public required string DisplayId { get; set; }
-    public required string Name { get; set; }
-    public required string DisplayName { get; set; }
-    public required User SIO { get; set; }
-    public DateTime Modified { get; set; }
-    public DateTime Created { get; set; }
-    public required string Status { get; set; }
+    public Guid Id { get; init; }
+    public required string DisplayId { get; init; }
+    public required string Name { get; init; }
+    public required string DisplayName { get; init; }
+    public required User SIO { get; init; }
+    public DateTime Modified { get; init; }
+    public DateTime Created { get; init; }
+    public required string Status { get; init; }
     public required ICollection<User> Users { get; init; }
 }
 
