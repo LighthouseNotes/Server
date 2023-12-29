@@ -4,9 +4,10 @@ using Minio;
 using Minio.DataModel;
 using Minio.Exceptions;
 
-namespace LighthouseNotesServer.Controllers.Case.Personal;
+namespace Server.Controllers.Case.Personal;
 
 [ApiController]
+[Route("/case/{caseId:guid}")]
 [AuditApi(EventTypeName = "HTTP")]
 public class TabsController : ControllerBase
 {
@@ -19,91 +20,84 @@ public class TabsController : ControllerBase
         _auditContext = new AuditScopeFactory();
     }
 
-    // GET: /case/5/tabs
-    [Route("/case/{caseId:guid}/tabs")]
-    [HttpGet]
+    // GET: /case/?/tabs
+    [HttpGet("tabs")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
     public async Task<ActionResult<IEnumerable<API.Tab>>> GetTabs(Guid caseId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, case, or case user are null return HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+            preflightResponse.SCase == null || preflightResponse.CaseUser == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
+        Database.CaseUser caseUser = preflightResponse.CaseUser;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
-        return sCase.Tabs.Where(t => t.User == user).Select(t => new API.Tab
+        // Return a list of the user's tabs
+        return caseUser.Tabs.Select(t => new API.Tab
         {
             Id = t.Id,
             Name = t.Name
         }).ToList();
     }
 
-    // GET: /tab/5
-    [Route("/case/{caseId:guid}/tab/{tabId:guid}")]
-    [HttpGet]
+    // GET: /case/?/tab/?
+    [HttpGet("tab/{tabId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
     public async Task<ActionResult<API.Tab>> GetTab(Guid caseId, Guid tabId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, case, or case user are null return a HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+            preflightResponse.SCase == null || preflightResponse.CaseUser == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
+        Database.CaseUser caseUser = preflightResponse.CaseUser;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
         // Fetch tab from the database
-        Database.Tab? tab = sCase.Tabs.SingleOrDefault(t => t.Id == tabId);
+        Database.Tab? tab = caseUser.Tabs.SingleOrDefault(t => t.Id == tabId);
 
-        // If tab is null then return HTTP 404 error
+        // If tab is null then return a HTTP 404 error as it does not exist
         if (tab == null)
             return NotFound($"A tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
 
-        // If the user does not have access to the tab then return HTTP 401 error
-        if (tab.User != user)
-            return Unauthorized($"You do not have permission to access the tab with the ID `{tabId}`!");
-
-
+        // Return tab details
         return new API.Tab
         {
             Id = tab.Id,
@@ -111,73 +105,72 @@ public class TabsController : ControllerBase
         };
     }
 
-    // POST: /case/5/tab
-    [Route("/case/{caseId:guid}/tab")]
-    [HttpPost]
+    // POST: /case/?/tab
+    [HttpPost("tab")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
     public async Task<ActionResult<API.Tab>> CreateTab(Guid caseId, API.AddTab tabAddObject)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, case, or case user are null return HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+            preflightResponse.SCase == null || preflightResponse.CaseUser == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
+        Database.CaseUser caseUser = preflightResponse.CaseUser;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
+        // Create tab model
         Database.Tab tabModel = new()
         {
-            User = user,
             Name = tabAddObject.Name
         };
 
         // Add tab to database
-        sCase.Tabs.Add(tabModel);
+        caseUser.Tabs.Add(tabModel);
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
 
+        // Return the newly created tab details
         return CreatedAtAction(nameof(GetTabs), new { caseId }, new API.Tab { Id = tabModel.Id, Name = tabModel.Name });
     }
 
-    // GET: /tab/5/content
-    [Route("/case/{caseId:guid}/tab/{tabId:guid}/content")]
-    [HttpGet]
+    // GET: /case/?/tab/?/content
+    [HttpGet("tab/{tabId:guid}/content")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
     public async Task<ActionResult> GetTabContent(Guid caseId, Guid tabId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, case, or case user are null return a HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+            preflightResponse.SCase == null || preflightResponse.CaseUser == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
@@ -186,27 +179,18 @@ public class TabsController : ControllerBase
         Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
         Database.Case sCase = preflightResponse.SCase;
+        Database.CaseUser caseUser = preflightResponse.CaseUser;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
-        // Fetch tab from the database
-        Database.Tab? tab = sCase.Tabs.SingleOrDefault(t => t.Id == tabId);
+        // Fetch the tab from the database
+        Database.Tab? tab = caseUser.Tabs.SingleOrDefault(t => t.Id == tabId);
 
-        // If tab is null then return HTTP 404 error
+        // If tab is null then return HTTP 404 error as it does not exist
         if (tab == null)
             return NotFound($"A tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
-
-        // If the user does not have access to the tab then return HTTP 401 error
-        if (tab.User != user)
-            return Unauthorized($"You do not have permission to access the tab with the ID `{tabId}`!");
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
 
         // Create minio client
         MinioClient minio = new MinioClient()
@@ -215,7 +199,7 @@ public class TabsController : ControllerBase
             .WithSSL(organization.Configuration.S3NetworkEncryption)
             .Build();
 
-        // Create a variable with filepath - note removing auth0| from filepath 
+        // Create a variable for object path with auth0| removed 
         string objectPath = $"cases/{sCase.Id}/{user.Id.Replace("auth0|", "")}/tabs/{tab.Id}/content.txt";
 
         // Check if bucket exists
@@ -223,13 +207,14 @@ public class TabsController : ControllerBase
             .WithBucket(organization.Configuration.S3BucketName)
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return HTTP 500 error
+        // If bucket does not exist return a HTTP 500 error
         if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
+            return Problem($"An S3 Bucket with the name `{organization.Configuration.S3BucketName}` does not exist!");
 
+        // Create variable to store object metadata
         ObjectStat objectMetadata;
 
-        // Try and access object if object does not exist catch exception
+        // Try and access object, if object does not exist catch exception
         try
         {
             objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
@@ -241,14 +226,14 @@ public class TabsController : ControllerBase
         catch (ObjectNotFoundException)
         {
             return Problem(
-                $"Can not find the S3 object for the tab with the ID `{tabId}` at the following path `{objectPath}`. Its likely the object does not exist because you have not created any notes!");
+                $"Can not find the S3 object for the tab with the ID `{tabId}` at the following path `{objectPath}`.");
         }
 
         // Fetch object hash from database
-        Database.Hash? objectHashes = sCase.Hashes.SingleOrDefault(h =>
-            h.User == user && h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
+        Database.Hash? objectHashes = caseUser.Hashes.SingleOrDefault(h =>
+            h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
 
-        // If object hash is null then a hash does not exist so return HTTP 500 error
+        // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
             return Problem($"Unable to find hash values for the tab with the ID `{tabId}`!");
 
@@ -262,6 +247,9 @@ public class TabsController : ControllerBase
             .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
         );
 
+        // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+        memoryStream.Position = 0;
+
         // Create MD5 and SHA256
         using MD5 md5 = MD5.Create();
         using SHA256 sha256 = SHA256.Create();
@@ -270,37 +258,37 @@ public class TabsController : ControllerBase
         byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
         byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
 
-        // Check MD5 hash generated matches hash in the database
+        // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem("MD5 hash verification failed!");
+            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
 
-        // Check SHA256 hash generated matches hash in the database
+        // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem("SHA256 hash verification failed!");
+            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
 
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
     }
 
-    // POST: /tab/5/content
-    [Route("/case/{caseId:guid}/tab/{tabId:guid}/content")]
-    [HttpPost]
+    // POST: /case/?/tab/?/content
+    [HttpPost("tab/{tabId:guid}/content")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
     public async Task<ActionResult> PostTabContent(Guid caseId, Guid tabId, [FromForm] IFormFile file)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, case, or case user are null return HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+            preflightResponse.SCase == null || preflightResponse.CaseUser == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
@@ -309,27 +297,18 @@ public class TabsController : ControllerBase
         Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
         Database.Case sCase = preflightResponse.SCase;
+        Database.CaseUser caseUser = preflightResponse.CaseUser;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
         // Fetch tab from the database
-        Database.Tab? tab = sCase.Tabs.SingleOrDefault(t => t.Id == tabId);
+        Database.Tab? tab = caseUser.Tabs.SingleOrDefault(t => t.Id == tabId);
 
-        // If tab is null then return HTTP 404 error
+        // If tab is null then return a HTTP 404 error
         if (tab == null)
             return NotFound($"A tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
-
-        // If the user does not have access to the tab then return HTTP 401 error
-        if (tab.User != user)
-            return Unauthorized($"You do not have permission to access the tab with the ID `{tabId}`!");
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
 
         // Create minio client
         MinioClient minio = new MinioClient()
@@ -338,7 +317,7 @@ public class TabsController : ControllerBase
             .WithSSL(organization.Configuration.S3NetworkEncryption)
             .Build();
 
-        // Create a variable with filepath - note removing auth0| from filepath 
+        // Create a variable for filepath with auth0| removed
         string objectPath = $"cases/{sCase.Id}/{user.Id.Replace("auth0|", "")}/tabs/{tab.Id}/content.txt";
 
         // Check if bucket exists
@@ -346,9 +325,9 @@ public class TabsController : ControllerBase
             .WithBucket(organization.Configuration.S3BucketName)
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return HTTP 500 error
+        // If bucket does not exist return a HTTP 500 error
         if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
+            return Problem($"An S3 Bucket with the name `{organization.Configuration.S3BucketName}` does not exist!");
 
         // Check if object exists
         try
@@ -361,6 +340,7 @@ public class TabsController : ControllerBase
             // Create memory stream to store file contents
             MemoryStream memoryStream = new();
 
+            // Copy file to memory stream
             await file.CopyToAsync(memoryStream);
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
@@ -375,6 +355,8 @@ public class TabsController : ControllerBase
                 .WithContentType("application/octet-stream")
             );
 
+            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+            memoryStream.Position = 0;
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
@@ -391,9 +373,8 @@ public class TabsController : ControllerBase
             byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
 
             // Save hash to the database
-            sCase.Hashes.Add(new Database.Hash
+            caseUser.Hashes.Add(new Database.Hash
             {
-                User = user,
                 ObjectName = objectMetadata.ObjectName,
                 VersionId = objectMetadata.VersionId,
                 Md5Hash = BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant(),
@@ -421,12 +402,13 @@ public class TabsController : ControllerBase
             // Create memory stream to store file contents
             MemoryStream memoryStream = new();
 
+            // Copy file to memory stream
             await file.CopyToAsync(memoryStream);
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
 
-            // Save file to s3 bucket
+            // Save file to S3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
                 .WithBucket(organization.Configuration.S3BucketName)
                 .WithObject(objectPath)
@@ -434,6 +416,9 @@ public class TabsController : ControllerBase
                 .WithObjectSize(memoryStream.Length)
                 .WithContentType("application/octet-stream")
             );
+
+            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+            memoryStream.Position = 0;
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
@@ -450,9 +435,8 @@ public class TabsController : ControllerBase
             byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
 
             // Save hash to the database
-            sCase.Hashes.Add(new Database.Hash
+            caseUser.Hashes.Add(new Database.Hash
             {
-                User = user,
                 ObjectName = objectMetadata.ObjectName,
                 VersionId = objectMetadata.VersionId,
                 Md5Hash = BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant(),
@@ -481,24 +465,25 @@ public class TabsController : ControllerBase
         }
     }
 
-    // GET: /tab/5/content/image/100.jpg
-    [HttpGet("/case/{caseId:guid}/tab/{tabId:guid}/content/image/{fileName}")]
+    // GET: /case/?/tab/?/content/image/100.jpg
+    [HttpGet("tab/{tabId:guid}/content/image/{fileName}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
     public async Task<ActionResult<string>> GetTabContentImage(Guid caseId, Guid tabId, string fileName)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, case, or case user are null return HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+            preflightResponse.SCase == null || preflightResponse.CaseUser == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
@@ -506,28 +491,18 @@ public class TabsController : ControllerBase
         // Set variables from preflight response
         Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
+        Database.CaseUser caseUser = preflightResponse.CaseUser;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
         // Fetch tab from the database
-        Database.Tab? tab = sCase.Tabs.SingleOrDefault(t => t.Id == tabId);
+        Database.Tab? tab = caseUser.Tabs.SingleOrDefault(t => t.Id == tabId);
 
         // If tab is null then return HTTP 404 error
         if (tab == null)
             return NotFound($"A tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
-
-        // If the user does not have access to the tab then return HTTP 401 error
-        if (tab.User != user)
-            return Unauthorized("You do not have permission to access the tab with the ID `{tabId}`!");
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
 
         // Create minio client
         MinioClient minio = new MinioClient()
@@ -536,17 +511,17 @@ public class TabsController : ControllerBase
             .WithSSL(organization.Configuration.S3NetworkEncryption)
             .Build();
 
-        // Create a variable for object path NOTE: removing auth0| from objectPath 
-        string objectPath = $"cases/{tab.Case.Id}/{user.Id.Replace("auth0|", "")}/tabs/{tabId}/images/{fileName}";
+        // Create a variable for object path with auth0| removed
+        string objectPath = $"cases/{caseId}/{user.Id.Replace("auth0|", "")}/tabs/{tabId}/images/{fileName}";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
             .WithBucket(organization.Configuration.S3BucketName)
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return HTTP 500 error
+        // If bucket does not exist return a HTTP 500 error
         if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
+            return Problem($"An S3 Bucket with the name `{organization.Configuration.S3BucketName}` does not exist!");
 
         // Fetch object metadata
         ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
@@ -555,10 +530,10 @@ public class TabsController : ControllerBase
         );
 
         // Fetch object hash from database
-        Database.Hash? objectHashes = sCase.Hashes.SingleOrDefault(h =>
-            h.User == user && h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
+        Database.Hash? objectHashes = caseUser.Hashes.SingleOrDefault(h =>
+            h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
 
-        // If object hash is null then a hash does not exist so return HTTP 500 error
+        // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
             return Problem("Unable to find hash values for the requested image!");
 
@@ -572,6 +547,9 @@ public class TabsController : ControllerBase
             .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
         );
 
+        // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+        memoryStream.Position = 0;
+
         // Create MD5 and SHA256
         using MD5 md5 = MD5.Create();
         using SHA256 sha256 = SHA256.Create();
@@ -580,13 +558,13 @@ public class TabsController : ControllerBase
         byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
         byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
 
-        // Check MD5 hash generated matches hash in the database
+        // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem("MD5 hash verification failed!");
+            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
 
-        // Check SHA256 hash generated matches hash in the database
+        // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem("SHA256 hash verification failed!");
+            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
 
         // Fetch presigned url for object  
         string url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
@@ -599,27 +577,25 @@ public class TabsController : ControllerBase
         return url;
     }
 
-    // POST  /case/5/contemporaneous-notes/image
-    [HttpPost("/case/{caseId:guid}/tab/{tabId:guid}/content/image")]
+    // POST: /case/?/tab/?/content/image
+    [HttpPost("tab/{tabId:guid}/content/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
     public async Task<ActionResult> PostTabContentImage(Guid caseId, Guid tabId, IList<IFormFile> uploadFiles)
     {
-        // Get file size
-        long size = uploadFiles.Sum(f => f.Length);
-
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, case, or case user are null return HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+            preflightResponse.SCase == null || preflightResponse.CaseUser == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
@@ -628,27 +604,21 @@ public class TabsController : ControllerBase
         Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
         Database.Case sCase = preflightResponse.SCase;
+        Database.CaseUser caseUser = preflightResponse.CaseUser;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
         // Fetch tab from the database
-        Database.Tab? tab = sCase.Tabs.SingleOrDefault(t => t.Id == tabId);
+        Database.Tab? tab = caseUser.Tabs.SingleOrDefault(t => t.Id == tabId);
 
         // If tab is null then return HTTP 404 error
         if (tab == null)
             return NotFound($"A tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
 
-        // If the user does not have access to the tab then return HTTP 401 error
-        if (tab.User != user)
-            return Unauthorized($"You do not have permission to access the tab with the ID `{tabId}`!");
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
+        // Get file size
+        long size = uploadFiles.Sum(f => f.Length);
 
         // Create minio client
         MinioClient minio = new MinioClient()
@@ -664,7 +634,7 @@ public class TabsController : ControllerBase
 
         // If bucket does not exist return HTTP 500 error
         if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
+            return Problem($"An S3 Bucket with the name `{organization.Configuration.S3BucketName}` does not exist!");
 
         // Loop through each file
         foreach (IFormFile file in uploadFiles)
@@ -672,11 +642,12 @@ public class TabsController : ControllerBase
             // Create variable for file name
             string fileName = ContentDispositionHeaderValue.Parse(file.ContentDisposition).FileName.Trim().ToString();
 
+            // Create a variable for object path with auth0| removed 
             string objectPath =
-                $"cases/{tab.Case.Id}/{user.Id.Replace("auth0|", "")}/tabs/{tabId}/images/{fileName}";
+                $"cases/{caseId}/{user.Id.Replace("auth0|", "")}/tabs/{tabId}/images/{fileName}";
 
             // Create memory stream to hold file contents 
-            using MemoryStream memoryStream = new();
+            MemoryStream memoryStream = new();
 
             // Copy file to memory stream
             await file.CopyToAsync(memoryStream);
@@ -693,6 +664,9 @@ public class TabsController : ControllerBase
                 .WithContentType("application/octet-stream")
             );
 
+            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+            memoryStream.Position = 0;
+
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
                 .WithBucket(organization.Configuration.S3BucketName)
@@ -708,9 +682,8 @@ public class TabsController : ControllerBase
             byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
 
             // Save hash to the database
-            sCase.Hashes.Add(new Database.Hash
+            caseUser.Hashes.Add(new Database.Hash
             {
-                User = user,
                 ObjectName = objectMetadata.ObjectName,
                 VersionId = objectMetadata.VersionId,
                 Md5Hash = BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant(),
@@ -734,7 +707,6 @@ public class TabsController : ControllerBase
         return Ok(new { count = uploadFiles.Count, size });
     }
 
-
     private async Task<PreflightResponse> PreflightChecks(Guid caseId)
     {
         // Get user id from claim
@@ -748,50 +720,44 @@ public class TabsController : ControllerBase
         // Get organization id from claim
         string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        // If organization id is null then it does not exist in JWT so return a HTTP 400 error
         if (organizationId == null)
             return new PreflightResponse
                 { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Fetch organization from the database by primary key
-        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        // Get the user from the database by user ID and organization ID
+        Database.User? user = await _dbContext.User.Where(u => u.Id == userId && u.Organization.Id == organizationId)
+            .Include(user => user.Organization)
+            .SingleOrDefaultAsync();
 
-        // If organization is null then it does not exist so return a HTTP 404 error
-        if (organization == null)
-            return new PreflightResponse
-                { Error = NotFound($"A organization with the ID `{organizationId}` can not be found!") };
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (organization.Users.All(u => u.Id != userId))
+        // If user is null then they do not exist so return a HTTP 404 error
+        if (user == null)
             return new PreflightResponse
             {
-                Error = Unauthorized(
-                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!")
+                Error = NotFound(
+                    $"A user with the ID `{userId}` can not be found in the organization with the ID `{organizationId}`!")
             };
 
         // If case does not exist in organization return a HTTP 404 error
-        if (organization.Cases.All(c => c.Id != caseId))
+        Database.Case? sCase = await _dbContext.Case.SingleOrDefaultAsync(c => c.Id == caseId);
+        if (sCase == null)
             return new PreflightResponse { Error = NotFound($"A case with the ID `{caseId}` could not be found!") };
 
-        // Fetch case from database and include case users and then include user details
-        Database.Case sCase = organization.Cases.Single(c => c.Id == caseId);
-
+        // Get the case user
+        Database.CaseUser? caseUser = sCase.Users.SingleOrDefault(cu => cu.User == user);
 
         // If user does not have access to the requested case return a HTTP 403 error
-        if (sCase.Users.All(u => u.User.Id != userId))
+        if (caseUser == null)
             return new PreflightResponse
             {
                 Error = Unauthorized(
                     $"The user with the ID `{userId}` does not have access to the case with the ID `{caseId}`!")
             };
 
-        // Fetch user from database
-        Database.User user = organization.Users.Single(u => u.Id == userId);
-
-        // Return organization, user and case entity 
-        return new PreflightResponse { Organization = organization, User = user, SCase = sCase };
+        // Return organization, user, case and case user entity 
+        return new PreflightResponse
+            { Organization = user.Organization, User = user, SCase = sCase, CaseUser = caseUser };
     }
-
 
     private class PreflightResponse
     {
@@ -799,5 +765,6 @@ public class TabsController : ControllerBase
         public Database.Organization? Organization { get; init; }
         public Database.User? User { get; init; }
         public Database.Case? SCase { get; init; }
+        public Database.CaseUser? CaseUser { get; init; }
     }
 }
