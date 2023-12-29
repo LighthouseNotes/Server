@@ -60,7 +60,7 @@ public class ContemporaneousNotesController : ControllerBase
     }
 
     // GET: /case/?/contemporaneous-note/?
-    [HttpGet("/case/{caseId:guid}/contemporaneous-note/{noteId:guid}")]
+    [HttpGet("contemporaneous-note/{noteId:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
@@ -417,7 +417,7 @@ public class ContemporaneousNotesController : ControllerBase
     }
 
     // POST: /case/5/contemporaneous-notes/image
-    [HttpPost("/case/{caseId:guid}/contemporaneous-note/{noteId:guid}/image")]
+    [HttpPost("contemporaneous-note/{noteId:guid}/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
