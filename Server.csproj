@@ -6,12 +6,12 @@
 	<GenerateDocumentationFile>true</GenerateDocumentationFile>
 	<NoWarn>$(NoWarn);1591</NoWarn>
 	<Nullable>enable</Nullable>
-	<EnableSdkContainerSupport>true</EnableSdkContainerSupport>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Audit.NET.PostgreSql" Version="21.0.3" />
     <PackageReference Include="Audit.WebApi" Version="21.0.3" />
+    <PackageReference Include="BlazorTemplater" Version="1.5.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.5" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.10">
@@ -20,24 +20,26 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" Version="7.0.10" />
     <PackageReference Include="Minio" Version="5.0.0" />
+    <PackageReference Include="MudBlazor" Version="6.11.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="7.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+    <PackageReference Include="Syncfusion.HtmlToPdfConverter.Net.Windows" Version="24.1.41" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.21.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Audit.Core;" />
     <Using Include="Audit.WebApi" />
-    <Using Include="LighthouseNotesServer.Data;" />
-    <Using Include="LighthouseNotesServer.Models.API">
-      <Alias>API</Alias>
-    </Using>
-    <Using Include="LighthouseNotesServer.Models.Database">
-      <Alias>Database</Alias>
-    </Using>
     <Using Include="Microsoft.AspNetCore.Authorization" />
     <Using Include="Microsoft.AspNetCore.Mvc" />
     <Using Include="Microsoft.EntityFrameworkCore" />
+    <Using Include="Server.Data" />
+    <Using Include="Server.Models.API">
+      <Alias>API</Alias>
+    </Using>
+    <Using Include="Server.Models.Database">
+      <Alias>Database</Alias>
+    </Using>
     <Using Include="System.Security.Claims" />
   </ItemGroup>
 
@@ -45,6 +47,15 @@
     <Folder Include="Migrations\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Properties\serviceDependencies.json" />
+    <None Remove="Properties\serviceDependencies.local.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="Controllers\Case\ExportTemplate.razor" />
+  </ItemGroup>
+  
   <ItemGroup>
     <None Remove="Properties\serviceDependencies.json" />
     <None Remove="Properties\serviceDependencies.local.json" />
