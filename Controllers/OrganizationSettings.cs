@@ -1,27 +1,27 @@
-﻿namespace LighthouseNotesServer.Controllers;
+﻿namespace Server.Controllers;
 
-[Route("/organization/config")]
+[Route("/organization/settings")]
 [ApiController]
 [AuditApi(EventTypeName = "HTTP")]
-public class OrganizationConfigController : ControllerBase
+public class OrganizationSettingsController : ControllerBase
 {
     private readonly AuditScopeFactory _auditContext;
     private readonly DatabaseContext _dbContext;
 
-    public OrganizationConfigController(DatabaseContext dbContext)
+    public OrganizationSettingsController(DatabaseContext dbContext)
     {
         _dbContext = dbContext;
         _auditContext = new AuditScopeFactory();
     }
     
-     // GET: /organization/config
-    [HttpGet]
+    // GET: /organization/s3-endpoint
+    [HttpGet("s3-endpoint")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "organization-administrator")]
-    public async Task<ActionResult<API.OrganizationConfig>> GetSettings()
+    [Authorize(Roles = "user")]
+    public async Task<ActionResult<API.OrganizationSettings>> GetS3Endpoint()
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -44,24 +44,62 @@ public class OrganizationConfigController : ControllerBase
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
-        return new API.OrganizationConfig()
+        return new API.OrganizationSettings
         {
-            S3Endpoint = organization.Configuration.S3Endpoint,
-            S3AccessKey = organization.Configuration.S3AccessKey,
-            S3BucketName = organization.Configuration.S3BucketName,
-            S3NetworkEncryption = organization.Configuration.S3NetworkEncryption,
-            S3SecretKey = organization.Configuration.S3SecretKey
+            S3Endpoint = organization.Settings.S3Endpoint,
+            S3BucketName = organization.Settings.S3BucketName,
+            S3NetworkEncryption = organization.Settings.S3NetworkEncryption
+        };
+    }
+
+    // GET: /organization/config
+    [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [Authorize(Roles = "organization-administrator")]
+    public async Task<ActionResult<API.OrganizationSettings>> GetSettings()
+    {
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks();
+
+        // If preflight checks returned an error return it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
+
+        // If organization or case are null return HTTP 500 error
+        if (preflightResponse.Organization == null || preflightResponse.User == null)
+            return Problem(
+                "Preflight checks failed with an unknown error!"
+            );
+
+        // Set variables from preflight response
+        Database.Organization organization = preflightResponse.Organization;
+        Database.User user = preflightResponse.User;
+
+        // Log OrganizationID and UserID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organization.Id);
+        auditScope.SetCustomField("UserID", user.Id);
+
+        return new API.OrganizationSettings
+        {
+            S3Endpoint = organization.Settings.S3Endpoint,
+            S3AccessKey = organization.Settings.S3AccessKey,
+            S3BucketName = organization.Settings.S3BucketName,
+            S3NetworkEncryption = organization.Settings.S3NetworkEncryption,
+            S3SecretKey = organization.Settings.S3SecretKey
         };
     }
     
-      // PUT: /organization/config
+      // PUT: /organization/settings
      [HttpPut]
      [ProducesResponseType(StatusCodes.Status204NoContent)]
      [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
      [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
      [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
      [Authorize(Roles = "organization-administrator")]
-     public async Task<IActionResult> UpdateSettings(API.OrganizationConfig organizationConfig)
+     public async Task<IActionResult> UpdateSettings(API.OrganizationSettings organizationSettings)
      {
          // Preflight checks
          PreflightResponse preflightResponse = await PreflightChecks();
@@ -84,33 +122,33 @@ public class OrganizationConfigController : ControllerBase
          auditScope.SetCustomField("OrganizationID", organization.Id);
          auditScope.SetCustomField("UserID", user.Id);
 
-         if (!string.IsNullOrWhiteSpace(organizationConfig.S3Endpoint) &&
-             organizationConfig.S3Endpoint != organization.Configuration.S3Endpoint)
+         if (!string.IsNullOrWhiteSpace(organizationSettings.S3Endpoint) &&
+             organizationSettings.S3Endpoint != organization.Settings.S3Endpoint)
          {
-             organization.Configuration.S3Endpoint = organizationConfig.S3Endpoint;
+             organization.Settings.S3Endpoint = organizationSettings.S3Endpoint;
          }
          
-         if (organizationConfig.S3NetworkEncryption != organization.Configuration.S3NetworkEncryption)
+         if (organizationSettings.S3NetworkEncryption != organization.Settings.S3NetworkEncryption)
          {
-             organization.Configuration.S3NetworkEncryption = organizationConfig.S3NetworkEncryption;
+             organization.Settings.S3NetworkEncryption = organizationSettings.S3NetworkEncryption;
          }
          
-         if (!string.IsNullOrWhiteSpace(organizationConfig.S3BucketName) &&
-             organizationConfig.S3BucketName != organization.Configuration.S3BucketName)
+         if (!string.IsNullOrWhiteSpace(organizationSettings.S3BucketName) &&
+             organizationSettings.S3BucketName != organization.Settings.S3BucketName)
          {
-             organization.Configuration.S3BucketName = organizationConfig.S3BucketName;
+             organization.Settings.S3BucketName = organizationSettings.S3BucketName;
          }
          
-         if (!string.IsNullOrWhiteSpace(organizationConfig.S3AccessKey) &&
-             organizationConfig.S3AccessKey != organization.Configuration.S3AccessKey)
+         if (!string.IsNullOrWhiteSpace(organizationSettings.S3AccessKey) &&
+             organizationSettings.S3AccessKey != organization.Settings.S3AccessKey)
          {
-             organization.Configuration.S3AccessKey = organizationConfig.S3AccessKey;
+             organization.Settings.S3AccessKey = organizationSettings.S3AccessKey;
          }
          
-         if (!string.IsNullOrWhiteSpace(organizationConfig.S3SecretKey) &&
-             organizationConfig.S3SecretKey != organization.Configuration.S3SecretKey)
+         if (!string.IsNullOrWhiteSpace(organizationSettings.S3SecretKey) &&
+             organizationSettings.S3SecretKey != organization.Settings.S3SecretKey)
          {
-             organization.Configuration.S3SecretKey = organizationConfig.S3SecretKey;
+             organization.Settings.S3SecretKey = organizationSettings.S3SecretKey;
          }
 
          await _dbContext.SaveChangesAsync();
