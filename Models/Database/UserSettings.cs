@@ -1,14 +1,13 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace LighthouseNotesServer.Models.Database;
+namespace Server.Models.Database;
 
 public class UserSettings : Base
 {
-    [Key]
-    public int Id { get; set; }
-    public virtual User? User { get; set; } = null!;
-    public required string TimeZone { get; set; }
-    public required string DateFormat { get; set; }
-    public required string TimeFormat { get; set; }
-    public required string Locale { get; set; }
+    [Key] public int Id { get; init; }
+    public virtual User User { get; init; } = null!;
+    [MaxLength(100)] public required string TimeZone { get; set; }
+    [MaxLength(50)] public required string DateFormat { get; set; }
+    [MaxLength(50)] public required string TimeFormat { get; set; }
+    [MaxLength(5)] public required string Locale { get; set; }
 }

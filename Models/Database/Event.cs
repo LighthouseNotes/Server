@@ -1,19 +1,19 @@
 ﻿using System.ComponentModel.DataAnnotations;
-using System.Numerics;
 using System.Text.Json;
 
-namespace LighthouseNotesServer.Models.Database;
+namespace Server.Models.Database;
 
 public class Event
 {
-    [Key]
-    public long Id { get; set; }
-    public DateTime Created { get; set; }
-    public DateTime Updated { get; set; }
-    public required JsonDocument Data { get; set; }
-    public required string EventType { get; set; }
-    public virtual Organization? Organization { get; set; }
-    public virtual User? User { get; set; }
+    [Key] public long Id { get; init; }
+    public DateTime Created { get; init; }
+    public DateTime Updated { get; init; }
+    public required JsonDocument Data { get; init; }
+    public required string EventType { get; init; }
+    public virtual User? User { get; init; }
 
-    public void Dispose() => Data?.Dispose();
+    public void Dispose()
+    {
+        Data?.Dispose();
+    }
 }

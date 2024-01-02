@@ -1,18 +1,17 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace LighthouseNotesServer.Models.Database;
+namespace Server.Models.Database;
 
 public class Organization : Base
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    public required string Id { get; set; }
+    [MaxLength(255)]
+    public required string Id { get; init; }
 
-    public required string Name { get; set; }
-    public required string DisplayName { get; set; }
+    [MaxLength(50)] public required string Name { get; init; }
+    [MaxLength(255)] public required string DisplayName { get; init; }
     public virtual IEnumerable<User> Users { get; } = new List<User>();
-    public virtual IEnumerable<Case> Cases { get; } = new List<Case>();
-    public virtual IEnumerable<Event> Events { get; } = new List<Event>();
-    public virtual OrganizationConfiguration Configuration { get; set; } = null!;
+    public virtual OrganizationSettings Settings{ get; init; } = null!;
 }

@@ -2,7 +2,7 @@
 
 namespace Server.Models.Database;
 
-public class Hash : Base
+public class SharedHash
 {
     [Key] public int Id { get; init; }
     public required string ObjectName { get; init; }

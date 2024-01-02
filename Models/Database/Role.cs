@@ -1,11 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace LighthouseNotesServer.Models.Database;
+namespace Server.Models.Database;
 
 public class Role : Base
 {
-    [Key] public int Id { get; set; }
+    [Key] public int Id { get; init; }
 
-    public required string Name { get; set; }
-    public virtual User User { get; set; } = null!;
+    [MaxLength(50)] public required string Name { get; init; }
 }

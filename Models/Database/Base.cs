@@ -1,4 +1,4 @@
-﻿namespace LighthouseNotesServer.Models.Database;
+﻿namespace Server.Models.Database;
 
 public class Base
 {

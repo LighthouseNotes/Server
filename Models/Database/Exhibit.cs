@@ -1,19 +1,18 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace LighthouseNotesServer.Models.Database;
+namespace Server.Models.Database;
 
 public class Exhibit : Base
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public Guid Id { get; set; }
+    public Guid Id { get; init; }
 
-    public virtual Case Case { get; set; } = null!;
-    public required string Reference { get; set; }
-    public required string Description { get; set; }
-    public required DateTime DateTimeSeizedProduced { get; set; }
-    public required string WhereSeizedProduced { get; set; }
-    public required string SeizedBy { get; set; }
-    public virtual ICollection<ExhibitUser> Users { get; } = new List<ExhibitUser>();
+    public required string Reference { get; init; }
+    public required string Description { get; init; }
+    public required DateTime DateTimeSeizedProduced { get; init; }
+    public required string WhereSeizedProduced { get; init; }
+    public required string SeizedBy { get; init; }
+    public virtual ICollection<User> Users { get; } = new List<User>();
 }

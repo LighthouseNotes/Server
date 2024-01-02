@@ -1,4 +1,4 @@
-﻿namespace LighthouseNotesServer.Controllers.Case;
+﻿namespace Server.Controllers.Case;
 
 [Route("/case")]
 [ApiController]
@@ -47,22 +47,25 @@ public class ExhibitController : ControllerBase
         auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
+        // Get the user's time zone
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
+        
         return sCase.Exhibits.Select(e => new API.Exhibit
         {
             Id = e.Id,
             Reference = e.Reference,
             Description = e.Description,
-            DateTimeSeizedProduced = e.DateTimeSeizedProduced,
+            DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
             WhereSeizedProduced = e.WhereSeizedProduced,
             SeizedBy = e.SeizedBy,
-            Users = e.Users.Select(eu => new API.User
+            Users = e.Users.Select(u => new API.User
             {
-                Id = eu.User.Id, JobTitle = eu.User.JobTitle, DisplayName = eu.User.DisplayName,
-                GivenName = eu.User.GivenName, LastName = eu.User.LastName, EmailAddress = eu.User.EmailAddress,
-                ProfilePicture = eu.User.ProfilePicture,
+                Id = u.Id, JobTitle = u.JobTitle, DisplayName = u.DisplayName,
+                GivenName = u.GivenName, LastName = u.LastName, EmailAddress = u.EmailAddress,
+                ProfilePicture = u.ProfilePicture,
                 Organization = new API.Organization
-                    { Name = eu.User.Organization.DisplayName, DisplayName = eu.User.Organization.DisplayName },
-                Roles = eu.User.Roles.Select(r => r.Name).ToList()
+                    { Name = u.Organization.DisplayName, DisplayName = u.Organization.DisplayName },
+                Roles = u.Roles.Select(r => r.Name).ToList()
             }).ToList()
         }).Where(e => e.Users.Any(u => u.Id == user.Id)).ToList();
     }
@@ -108,25 +111,28 @@ public class ExhibitController : ControllerBase
             return NotFound($"A exhibit with the ID `{exhibitId}` was not found in the case with the ID `{caseId}`!");
 
         // If user does not have access to the exhibit then return HTTP 401 error
-        if (exhibit.Users.All(eu => eu.User.Id != user.Id))
+        if (!exhibit.Users.Contains(user))
             return Unauthorized($"You do not have permission to access the exhibit with the ID `{exhibitId}`!");
 
+        // Get the user's time zone
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
+        
         return new API.Exhibit
         {
             Id = exhibit.Id,
             Reference = exhibit.Reference,
             Description = exhibit.Description,
-            DateTimeSeizedProduced = exhibit.DateTimeSeizedProduced,
+            DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(exhibit.DateTimeSeizedProduced, timeZone),
             WhereSeizedProduced = exhibit.WhereSeizedProduced,
             SeizedBy = exhibit.SeizedBy,
-            Users = exhibit.Users.Select(eu => new API.User
+            Users = exhibit.Users.Select(u => new API.User
             {
-                Id = eu.User.Id, JobTitle = eu.User.JobTitle, DisplayName = eu.User.DisplayName,
-                GivenName = eu.User.GivenName, LastName = eu.User.LastName, EmailAddress = eu.User.EmailAddress,
-                ProfilePicture = eu.User.ProfilePicture,
+                Id = u.Id, JobTitle = u.JobTitle, DisplayName = u.DisplayName,
+                GivenName = u.GivenName, LastName = u.LastName, EmailAddress = u.EmailAddress,
+                ProfilePicture = u.ProfilePicture,
                 Organization = new API.Organization
-                    { Name = eu.User.Organization.DisplayName, DisplayName = eu.User.Organization.DisplayName },
-                Roles = eu.User.Roles.Select(r => r.Name).ToList()
+                    { Name = u.Organization.DisplayName, DisplayName = u.Organization.DisplayName },
+                Roles = u.Roles.Select(r => r.Name).ToList()
             }).ToList()
         };
     }
@@ -194,11 +200,7 @@ public class ExhibitController : ControllerBase
                         $"A user with the ID `{userToAddId}` was not found in the organization with the ID `{organization.Id}`!");
 
             // Add user to case
-            newExhibit.Users.Add(new Database.ExhibitUser
-            {
-                Exhibit = newExhibit,
-                User = userToAdd
-            });
+            newExhibit.Users.Add(userToAdd);
 
             // Log addition of user
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -212,31 +214,33 @@ public class ExhibitController : ControllerBase
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
+        
+        // Get the user's time zone
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
 
         API.Exhibit createdExhibit = new()
         {
             Id = newExhibit.Id,
             Reference = newExhibit.Reference,
             Description = newExhibit.Description,
-            DateTimeSeizedProduced = newExhibit.DateTimeSeizedProduced,
+            DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(newExhibit.DateTimeSeizedProduced, timeZone),
             WhereSeizedProduced = newExhibit.WhereSeizedProduced,
             SeizedBy = newExhibit.SeizedBy,
-            Users = newExhibit.Users.Select(eu => new API.User
+            Users = newExhibit.Users.Select(u => new API.User
             {
-                Id = eu.User.Id, JobTitle = eu.User.JobTitle, DisplayName = eu.User.DisplayName,
-                GivenName = eu.User.GivenName, LastName = eu.User.LastName, EmailAddress = eu.User.EmailAddress,
-                ProfilePicture = eu.User.ProfilePicture,
+                Id = u.Id, JobTitle = u.JobTitle, DisplayName = u.DisplayName,
+                GivenName = u.GivenName, LastName = u.LastName, EmailAddress = u.EmailAddress,
+                ProfilePicture = u.ProfilePicture,
                 Organization = new API.Organization
-                    { Name = eu.User.Organization.DisplayName, DisplayName = eu.User.Organization.DisplayName },
-                Roles = eu.User.Roles.Select(r => r.Name).ToList()
+                    { Name = u.Organization.DisplayName, DisplayName = u.Organization.DisplayName },
+                Roles = u.Roles.Select(r => r.Name).ToList()
             }).ToList()
         };
 
         return CreatedAtAction(nameof(GetExhibit),
             new { caseId, exhibitId = newExhibit.Id }, createdExhibit);
     }
-
-
+    
     private async Task<PreflightResponse> PreflightChecks(Guid caseId)
     {
         // Get user id from claim
@@ -255,29 +259,23 @@ public class ExhibitController : ControllerBase
             return new PreflightResponse
                 { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Fetch organization from the database by primary key
-        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        // Get the user from the database by user ID and organization ID
+        Database.User? user = await _dbContext.User.Where(u => u.Id == userId && u.Organization.Id == organizationId)
+            .Include(user => user.Organization)
+            .SingleOrDefaultAsync();
 
-        // If organization is null then it does not exist so return a HTTP 404 error
-        if (organization == null)
-            return new PreflightResponse
-                { Error = NotFound($"A organization with the ID `{organizationId}` can not be found!") };
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (organization.Users.All(u => u.Id != userId))
+        // If user is null then they do not exist so return a HTTP 404 error
+        if (user == null)
             return new PreflightResponse
             {
-                Error = Unauthorized(
-                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!")
+                Error = NotFound(
+                    $"A user with the ID `{userId}` can not be found in the organization with the ID `{organizationId}`!")
             };
 
         // If case does not exist in organization return a HTTP 404 error
-        if (organization.Cases.All(c => c.Id != caseId))
+        Database.Case? sCase = await _dbContext.Case.SingleOrDefaultAsync(c => c.Id == caseId);
+        if (sCase == null)
             return new PreflightResponse { Error = NotFound($"A case with the ID `{caseId}` could not be found!") };
-
-        // Fetch case from database and include case users and then include user details
-        Database.Case sCase = organization.Cases.Single(c => c.Id == caseId);
-
 
         // If user does not have access to the requested case return a HTTP 403 error
         if (sCase.Users.All(u => u.User.Id != userId))
@@ -287,14 +285,10 @@ public class ExhibitController : ControllerBase
                     $"The user with the ID `{userId}` does not have access to the case with the ID `{caseId}`!")
             };
 
-        // Fetch user from database
-        Database.User user = organization.Users.Single(u => u.Id == userId);
-
         // Return organization, user and case entity 
-        return new PreflightResponse { Organization = organization, User = user, SCase = sCase };
+        return new PreflightResponse { Organization = user.Organization, User = user, SCase = sCase };
     }
-
-
+    
     private class PreflightResponse
     {
         public ObjectResult? Error { get; init; }

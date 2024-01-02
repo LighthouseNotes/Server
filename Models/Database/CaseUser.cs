@@ -1,11 +1,13 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace LighthouseNotesServer.Models.Database;
+namespace Server.Models.Database;
 
 public class CaseUser : Base
 {
-    [Key] public int Id { get; set; }
-
-    public virtual Case Case { get; set; } = null!;
-    public virtual User User { get; set; } = null!;
+    [Key] public int Id { get; init; }
+    public virtual User User { get; init; } = null!;
+    public bool IsSIO { get; set; }
+    public virtual ICollection<ContemporaneousNote> ContemporaneousNotes { get; init; } = null!;
+    public virtual ICollection<Tab> Tabs { get; init; } = null!;
+    public virtual ICollection<Hash> Hashes { get; init; } = null!;
 }
