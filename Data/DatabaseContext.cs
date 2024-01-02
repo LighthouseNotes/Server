@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore.ChangeTracking;
 
-namespace LighthouseNotesServer.Data;
+namespace Server.Data;
 
 public class DatabaseContext : DbContext
 {
@@ -60,24 +60,24 @@ public class DatabaseContext : DbContext
         }
     }
     
-    public DbSet<Database.Event> Event => Set<Database.Event>();
+    public IEnumerable<Database.Event> Event => Set<Database.Event>();
     
     public DbSet<Database.Organization> Organization => Set<Database.Organization>();
 
-    public IEnumerable<Database.OrganizationConfiguration> OrganizationConfiguration =>
-        Set<Database.OrganizationConfiguration>();
+    public IEnumerable<Database.OrganizationSettings> OrganizationSettings =>
+        Set<Database.OrganizationSettings>();
 
     public DbSet<Database.User> User => Set<Database.User>();
     public IEnumerable<Database.UserSettings> UserSettings =>
         Set<Database.UserSettings>();
-    public DbSet<Database.Case> Case => Set<Database.Case>();
-    public DbSet<Database.CaseUser> CaseUser => Set<Database.CaseUser>();
-    public IEnumerable<Database.Tab> Tab => Set<Database.Tab>();
     public IEnumerable<Database.Role> Role => Set<Database.Role>();
+    public DbSet<Database.Case> Case => Set<Database.Case>(); // For some reason this has to  be a DbSet
+    public DbSet<Database.CaseUser> CaseUser => Set<Database.CaseUser>();
+    public IEnumerable<Database.ContemporaneousNote> ContemporaneousNote => Set<Database.ContemporaneousNote>();
+    public IEnumerable<Database.Tab> Tab => Set<Database.Tab>();
     public IEnumerable<Database.SharedTab> SharedTab => Set<Database.SharedTab>();
-    public IEnumerable<Database.Hash> Hash => Set<Database.Hash>();
     public IEnumerable<Database.Exhibit> Exhibit => Set<Database.Exhibit>();
-    public IEnumerable<Database.ExhibitUser> ExhibitUser => Set<Database.ExhibitUser>();
+    public IEnumerable<Database.Hash> Hash => Set<Database.Hash>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -85,9 +85,9 @@ public class DatabaseContext : DbContext
         
         // Organization Configuration Relationship (one to one)
         modelBuilder.Entity<Database.Organization>()
-            .HasOne(e => e.Configuration)
+            .HasOne(e => e.Settings)
             .WithOne(e => e.Organization)
-            .HasForeignKey<Database.OrganizationConfiguration>("OrganizationId");
+            .HasForeignKey<Database.OrganizationSettings>("OrganizationId");
         
         // User settings relationship (one to one) 
         modelBuilder.Entity<Database.User>()
