@@ -1,7 +1,8 @@
 ﻿using System.Runtime.Serialization;
+
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 
-namespace LighthouseNotesServer.Models.API;
+namespace Server.Models.API;
 
 public class Case
 {

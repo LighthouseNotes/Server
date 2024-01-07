@@ -1,10 +1,14 @@
-﻿namespace LighthouseNotesServer.Models.API;
+﻿namespace Server.Models.API;
 
 public class ContemporaneousNotes
 {
-    public required List<string> Notes { get; set; }
+    public required Guid Id { get; set; }
+    public required DateTime Created { get; set; }
 }
-public class AddContemporaneousNotes
+
+public class SharedContemporaneousNotes
 {
-    public required string Content { get; set; }
+    public required Guid Id { get; set; }
+    public required DateTime Created { get; set; }
+    public required User Creator { get; set; }
 }
