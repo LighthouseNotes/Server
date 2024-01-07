@@ -1,4 +1,4 @@
-﻿namespace LighthouseNotesServer.Controllers;
+﻿namespace Server.Controllers;
 
 [Route("/user/settings")]
 [ApiController]

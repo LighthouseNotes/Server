@@ -1,4 +1,4 @@
-﻿namespace LighthouseNotesServer.Controllers;
+﻿namespace Server.Controllers;
 
 [Route("/user")]
 [ApiController]
@@ -475,7 +475,7 @@ public class UsersController : ControllerBase
         auditScope.SetCustomField("UserID", requestingUser.Id);
 
         // Fetch user from the database and include organization 
-        Database.User user = await _dbContext.User.Where(u => u.Id == userId).Include(u => u.Organization).FirstAsync();
+        Database.User user = await _dbContext.User.Where(u => u.Id == userId).Include(u => u.Organization).Include(u => u.Roles).FirstAsync();
 
         // If the requesting user is not part of the requesting organization return a HTTP 401 error
         if (requestingUser.Organization.Id != organization.Id)
@@ -491,6 +491,7 @@ public class UsersController : ControllerBase
                     $"User `{user.DisplayName} ({user.JobTitle})` was deleted by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
                 UserID = requestingUser.Id, OrganizationID = organization.Id
             });
+        
 
         // Remove the user
         _dbContext.User.Remove(user);
