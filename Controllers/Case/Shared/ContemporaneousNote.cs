@@ -1,13 +1,12 @@
 using System.Security.Cryptography;
-using System.Text;
-using Microsoft.Net.Http.Headers;
 using Minio;
 using Minio.DataModel;
 using Minio.Exceptions;
 
-namespace LighthouseNotesServer.Controllers.Case.Shared;
+namespace Server.Controllers.Case.Shared;
 
 [ApiController]
+[Route("/case/{caseId:guid}/shared")]
 [AuditApi(EventTypeName = "HTTP")]
 public class SharedContemporaneousNotesController : ControllerBase
 {
@@ -20,24 +19,78 @@ public class SharedContemporaneousNotesController : ControllerBase
         _auditContext = new AuditScopeFactory();
     }
 
-
-    // GET:  /case/5/contemporaneous-notes
-    [HttpGet("/case/{caseId:guid}/shared/contemporaneous-notes")]
+    // GET:  /case/?/shared/contemporaneous-notes
+    [HttpGet("contemporaneous-notes")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult> GetContemporaneousNotes(Guid caseId)
+    public async Task<ActionResult<List<API.SharedContemporaneousNotes>>> GetContemporaneousNotes(Guid caseId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, or case are null return a HTTP 500 error
+        if (preflightResponse.Organization == null || preflightResponse.User == null ||
+            preflightResponse.SCase == null)
+            return Problem(
+                "Preflight checks failed with an unknown error!"
+            );
+
+        // Set variables from preflight response
+        Database.User user = preflightResponse.User;
+        Database.Case sCase = preflightResponse.SCase;
+
+        // Log the user's ID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("UserID", user.Id);
+
+        // Return a list of the user's contemporaneous notes
+        return sCase.SharedContemporaneousNotes.Select(cn => new API.SharedContemporaneousNotes()
+        {
+            Id = cn.Id,
+            Created = cn.Created, 
+            Creator = new API.User()
+            {
+                Id = cn.Creator.Id,
+                DisplayName = cn.Creator.DisplayName,
+                EmailAddress = cn.Creator.EmailAddress,
+                GivenName = cn.Creator.GivenName,
+                LastName = cn.Creator.LastName,
+                JobTitle = cn.Creator.JobTitle,
+                ProfilePicture = cn.Creator.ProfilePicture,
+                Roles = cn.Creator.Roles.Select(r => r.Name).ToList(),
+                Organization = new API.Organization()
+                {
+                    DisplayName = cn.Creator.Organization.DisplayName,
+                    Name = cn.Creator.Organization.Name
+                }
+            }
+        }).ToList();
+    }
+
+    // GET: /case/?/shared/contemporaneous-note/?
+    [HttpGet("contemporaneous-note/{noteId:guid}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
+    [Authorize(Roles = "user")]
+    public async Task<ActionResult> GetContemporaneousNote(Guid caseId, Guid noteId)
+    {
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks(caseId);
+
+        // If preflight checks returned a HTTP error raise it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
+
+        // If organization, user, or case are null return a HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
             preflightResponse.SCase == null)
             return Problem(
@@ -48,35 +101,36 @@ public class SharedContemporaneousNotesController : ControllerBase
         Database.Organization organization = preflightResponse.Organization;
         Database.User user = preflightResponse.User;
         Database.Case sCase = preflightResponse.SCase;
-
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
 
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
+        // Fetch the contemporaneous note from the database
+        Database.SharedContemporaneousNote? contemporaneousNote =
+            sCase.SharedContemporaneousNotes.SingleOrDefault(cn => cn.Id == noteId);
+
+        // If contemporaneous note is null then return a HTTP 404 error as it does not exist
+        if (contemporaneousNote == null) return NotFound($"Can not find the note with the ID `{noteId}`");
 
         // Create minio client
         MinioClient minio = new MinioClient()
-            .WithEndpoint(organization.Configuration.S3Endpoint)
-            .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(organization.Configuration.S3NetworkEncryption)
+            .WithEndpoint(organization.Settings.S3Endpoint)
+            .WithCredentials(organization.Settings.S3AccessKey, organization.Settings.S3SecretKey)
+            .WithSSL(organization.Settings.S3NetworkEncryption)
             .Build();
 
-        // Create a variable for object path
-        string objectPath = $"cases/{caseId}/shared/contemporaneous-notes/contemporaneous-notes.txt";
+        // Create a variable for object path with auth0| removed 
+        string objectPath =
+            $"cases/{caseId}/shared/contemporaneous-notes/{noteId}/note.txt";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
+            .WithBucket(organization.Settings.S3BucketName)
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return HTTP 500 error
+        // If bucket does not exist return HTTP a 500 error
         if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
+            return Problem($"An S3 Bucket with the name `{organization.Settings.S3BucketName}` does not exist!");
 
         // Create variable to store object metadata
         ObjectStat objectMetadata;
@@ -85,7 +139,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         try
         {
             objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
+                .WithBucket(organization.Settings.S3BucketName)
                 .WithObject(objectPath)
             );
         }
@@ -93,14 +147,14 @@ public class SharedContemporaneousNotesController : ControllerBase
         catch (ObjectNotFoundException)
         {
             return Problem(
-                $"Can not find the S3 object for contemporaneous notes at the following path `{objectPath}`. Its likely the object does not exist because you have not created any notes!");
+                $"Can not find the S3 object for contemporaneous note: `{noteId}` at the following path: `{objectPath}`.");
         }
 
         // Fetch object hash from database
-        Database.Hash? objectHashes = sCase.Hashes.SingleOrDefault(h =>
+        Database.SharedHash? objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
             h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
 
-        // If object hash is null then a hash does not exist so return HTTP 500 error
+        // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
             return Problem("Unable to find hash values for contemporaneous notes!");
 
@@ -109,11 +163,14 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Get object and copy file contents to stream
         await minio.GetObjectAsync(new GetObjectArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
+            .WithBucket(organization.Settings.S3BucketName)
             .WithObject(objectPath)
             .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
         );
 
+        // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+        memoryStream.Position = 0;
+        
         // Create MD5 and SHA256
         using MD5 md5 = MD5.Create();
         using SHA256 sha256 = SHA256.Create();
@@ -121,36 +178,36 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Generate MD5 and SHA256 hash
         byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
         byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-        // Check MD5 hash generated matches hash in the database
+        
+        // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem("MD5 hash verification failed!");
+            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
 
-        // Check SHA256 hash generated matches hash in the database
+        // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem("SHA256 hash verification failed!");
-
+            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+        
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
     }
 
-    // POST: /case/5/contemporaneous-notes
-    [HttpPost("/case/{caseId:guid}/shared/contemporaneous-notes")]
+    // POST: /case/?/shared/contemporaneous-notes
+    [HttpPost("contemporaneous-note")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult> CreateOrAddContemporaneousNotes(Guid caseId,
-        API.AddContemporaneousNotes contemporaneousNotesContent)
+    public async Task<ActionResult> PostContemporaneousNote(Guid caseId, [FromForm] IFormFile file)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks(caseId);
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization, user or case are null return HTTP 500 error
+        // If organization, user, or case are null return a HTTP 500 error
         if (preflightResponse.Organization == null || preflightResponse.User == null ||
             preflightResponse.SCase == null)
             return Problem(
@@ -162,145 +219,68 @@ public class SharedContemporaneousNotesController : ControllerBase
         Database.User user = preflightResponse.User;
         Database.Case sCase = preflightResponse.SCase;
 
-        // Log OrganizationID and UserID
+        // Log the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
         auditScope.SetCustomField("UserID", user.Id);
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
 
         // Create minio client
         MinioClient minio = new MinioClient()
-            .WithEndpoint(organization.Configuration.S3Endpoint)
-            .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(organization.Configuration.S3NetworkEncryption)
+            .WithEndpoint(organization.Settings.S3Endpoint)
+            .WithCredentials(organization.Settings.S3AccessKey, organization.Settings.S3SecretKey)
+            .WithSSL(organization.Settings.S3NetworkEncryption)
             .Build();
 
-        // Create a variable for object path 
-        string objectPath = $"cases/{caseId}/shared/contemporaneous-notes/contemporaneous-notes.txt";
+        // Create contemporaneous note record in the database
+        Database.SharedContemporaneousNote contemporaneousNote = new()
+        {
+            Creator = user
+        };
+        sCase.SharedContemporaneousNotes.Add(contemporaneousNote);
+
+        // Save changes to the database so a GUID is generated
+        await _dbContext.SaveChangesAsync();
+
+        // Create a variable for object path with auth0| removed 
+        string objectPath =
+            $"cases/{caseId}/shared/contemporaneous-notes/{contemporaneousNote.Id}/note.txt";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
+            .WithBucket(organization.Settings.S3BucketName)
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return HTTP 500 error
+        // If bucket does not exist return a HTTP 500 error
         if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
+            return Problem($"An S3 Bucket with the name `{organization.Settings.S3BucketName}` does not exist!");
 
-        // Check if object exists
         try
-        {
-            await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Create memory stream to store file contents
-            MemoryStream existingDataStream = new();
-
-            // Get object and copy file contents to stream
-            await minio.GetObjectAsync(new GetObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-                .WithCallbackStream(stream => { stream.CopyTo(existingDataStream); })
-            );
-
-            // Convert new data to bytes
-            byte[] newData = Encoding.UTF8.GetBytes(contemporaneousNotesContent.Content);
-
-            // Convert existing data stream to bytes
-            byte[] existingData = existingDataStream.ToArray();
-
-            // Add new data to existing data
-            byte[] finalData = existingData.Concat(newData).ToArray();
-
-            // Create a data stream to store the updated file contents
-            MemoryStream finalDataStream = new();
-
-            // Write the updated data
-            finalDataStream.Write(finalData);
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            finalDataStream.Position = 0;
-
-            // Save the updated file to the s3 bucket
-            await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-                .WithStreamData(finalDataStream)
-                .WithObjectSize(finalDataStream.Length)
-                .WithContentType("application/octet-stream")
-            );
-
-
-            // Fetch object metadata
-            ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Create MD5 and SHA256
-            using MD5 md5 = MD5.Create();
-            using SHA256 sha256 = SHA256.Create();
-
-            // Generate MD5 and SHA256 hash
-            byte[] md5Hash = await md5.ComputeHashAsync(finalDataStream);
-            byte[] sha256Hash = await sha256.ComputeHashAsync(finalDataStream);
-
-            // Save hash to the database
-            sCase.Hashes.Add(new Database.Hash
-            {
-                ObjectName = objectMetadata.ObjectName,
-                VersionId = objectMetadata.VersionId,
-                Md5Hash = BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant(),
-                ShaHash = BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant()
-            });
-
-            // Save changes to the database
-            await _dbContext.SaveChangesAsync();
-
-            // Log the addition of content
-            await _auditContext.LogAsync("Lighthouse Notes",
-                new
-                {
-                    Action =
-                        $"User `{user.DisplayName} ({user.JobTitle})` added `{contemporaneousNotesContent.Content}` to shared contemporaneous notes for `{sCase.DisplayName}`.",
-                    UserID = user.Id, OrganizationID = organization.Id
-                });
-
-            // Return Ok
-            return Ok();
-        }
-        // Object does not exist so create it
-        catch (ObjectNotFoundException)
         {
             // Create memory stream to store file contents
             MemoryStream memoryStream = new();
-            byte[] data = Encoding.UTF8.GetBytes(contemporaneousNotesContent.Content);
-            memoryStream.Write(data);
+
+            await file.CopyToAsync(memoryStream);
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
-
+            
             // Save file to s3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
+                .WithBucket(organization.Settings.S3BucketName)
                 .WithObject(objectPath)
                 .WithStreamData(memoryStream)
                 .WithObjectSize(memoryStream.Length)
                 .WithContentType("application/octet-stream")
             );
+            
+            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+            memoryStream.Position = 0;
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
+                .WithBucket(organization.Settings.S3BucketName)
                 .WithObject(objectPath)
             );
-
+            
             // Create MD5 and SHA256
             using MD5 md5 = MD5.Create();
             using SHA256 sha256 = SHA256.Create();
@@ -310,7 +290,7 @@ public class SharedContemporaneousNotesController : ControllerBase
             byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
 
             // Save hash to the database
-            sCase.Hashes.Add(new Database.Hash
+            sCase.SharedHashes.Add(new Database.SharedHash
             {
                 ObjectName = objectMetadata.ObjectName,
                 VersionId = objectMetadata.VersionId,
@@ -326,7 +306,7 @@ public class SharedContemporaneousNotesController : ControllerBase
                 new
                 {
                     Action =
-                        $"User `{user.DisplayName} ({user.JobTitle})` created shared contemporaneous notes for `{sCase.DisplayName}` with the content `{contemporaneousNotesContent.Content}`.",
+                        $"User `{user.DisplayName} ({user.JobTitle})` created contemporaneous note for `{sCase.DisplayName}` with the ID `{contemporaneousNote.Id}`.",
                     UserID = user.Id, OrganizationID = organization.Id
                 });
 
@@ -336,241 +316,10 @@ public class SharedContemporaneousNotesController : ControllerBase
         catch (MinioException e)
         {
             return Problem(
-                $"An unknown error occured while adding to or creating contemporaneous notes. For more information see the following error message: `{e.Message}`");
+                $"An unknown error occured while adding a contemporaneous note. For more information see the following error message: `{e.Message}`");
         }
     }
-
-    // GET: /case/5/contemporaneous-notes/image/100.jpg
-    [HttpGet("/case/{caseId:guid}/shared/contemporaneous-notes/image/{fileName}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult<string>> GetContemporaneousNotesImage(Guid caseId, string fileName)
-    {
-        // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks(caseId);
-
-        // If preflight checks returned an error return it here
-        if (preflightResponse.Error != null) return preflightResponse.Error;
-
-        // If organization, user or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
-
-        // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
-
-        // Log OrganizationID and UserID
-        IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
-
-        // Create minio client
-        MinioClient minio = new MinioClient()
-            .WithEndpoint(organization.Configuration.S3Endpoint)
-            .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(organization.Configuration.S3NetworkEncryption)
-            .Build();
-
-        // Create a variable for object path 
-        string objectPath = $"cases/{caseId}/shared/contemporaneous-notes/images/{fileName}";
-
-        // Check if bucket exists
-        bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
-        ).ConfigureAwait(false);
-
-        // If bucket does not exist return HTTP 500 error
-        if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
-
-        // Fetch object metadata
-        ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
-            .WithObject(objectPath)
-        );
-
-        // Fetch object hash from database
-        Database.Hash? objectHashes = sCase.Hashes.SingleOrDefault(h =>
-            h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-        // If object hash is null then a hash does not exist so return HTTP 500 error
-        if (objectHashes == null)
-            return Problem("Unable to find hash values for the requested image!");
-
-        // Create memory stream to store file contents
-        MemoryStream memoryStream = new();
-
-        // Get object and copy file contents to stream
-        await minio.GetObjectAsync(new GetObjectArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
-            .WithObject(objectPath)
-            .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-        );
-
-        // Create MD5 and SHA256
-        using MD5 md5 = MD5.Create();
-        using SHA256 sha256 = SHA256.Create();
-
-        // Generate MD5 and SHA256 hash
-        byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
-        byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-        // Check MD5 hash generated matches hash in the database
-        if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem("MD5 hash verification failed!");
-
-        // Check SHA256 hash generated matches hash in the database
-        if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem("SHA256 hash verification failed!");
-
-        // Fetch presigned url for object  
-        string url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
-            .WithObject(objectPath)
-            .WithExpiry(3600)
-        );
-
-        // Return url
-        return url;
-    }
-
-    // POST  /case/5/contemporaneous-notes/image
-    [HttpPost("/case/{caseId:guid}/shared/contemporaneous-notes/image")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult> AddContemporaneousNotesImage(Guid caseId, IList<IFormFile> uploadFiles)
-    {
-        // Get file size
-        long size = uploadFiles.Sum(f => f.Length);
-
-        // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks(caseId);
-
-        // If preflight checks returned an error return it here
-        if (preflightResponse.Error != null) return preflightResponse.Error;
-
-        // If organization, user or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
-
-        // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
-
-        // Log OrganizationID and UserID
-        IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
-
-        // Check if organization has configuration
-        if (organization.Configuration == null)
-            return Problem(
-                "Your organization has not configured S3 connection settings. Please configure these settings and try again!");
-
-        // Create minio client
-        MinioClient minio = new MinioClient()
-            .WithEndpoint(organization.Configuration.S3Endpoint)
-            .WithCredentials(organization.Configuration.S3AccessKey, organization.Configuration.S3SecretKey)
-            .WithSSL(organization.Configuration.S3NetworkEncryption)
-            .Build();
-
-        // Check if bucket exists
-        bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organization.Configuration.S3BucketName)
-        ).ConfigureAwait(false);
-
-        // If bucket does not exist return HTTP 500 error
-        if (!bucketExists)
-            return Problem("An S3 Bucket with the name `lighthouse-notes` does not exist!");
-
-        // Loop through each file
-        foreach (IFormFile file in uploadFiles)
-        {
-            // Create variable for file name
-            string fileName = ContentDispositionHeaderValue.Parse(file.ContentDisposition).FileName.Trim().ToString();
-
-            // Create a variable for object path
-            string objectPath =
-                $"cases/{caseId}/shared/contemporaneous-notes/images/{fileName}";
-
-            // Create memory stream to hold file contents 
-            using MemoryStream memoryStream = new();
-
-            // Copy file to memory stream
-            await file.CopyToAsync(memoryStream);
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Save file to s3 bucket
-            await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-                .WithStreamData(memoryStream)
-                .WithObjectSize(memoryStream.Length)
-                .WithContentType("application/octet-stream")
-            );
-
-            // Fetch object metadata
-            ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organization.Configuration.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Create MD5 and SHA256
-            using MD5 md5 = MD5.Create();
-            using SHA256 sha256 = SHA256.Create();
-
-            // Generate MD5 and SHA256 hash
-            byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
-            byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-            // Save hash to the database
-            sCase.Hashes.Add(new Database.Hash
-            {
-                ObjectName = objectMetadata.ObjectName,
-                VersionId = objectMetadata.VersionId,
-                Md5Hash = BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant(),
-                ShaHash = BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant()
-            });
-
-            // Save changes to the database
-            await _dbContext.SaveChangesAsync();
-
-            // Log the creation of the image
-            await _auditContext.LogAsync("Lighthouse Notes",
-                new
-                {
-                    Action =
-                        $"User `{user.DisplayName} ({user.JobTitle})` uploaded an image to shared contemporaneous notes for case `{sCase.DisplayName}` with name `{fileName}`.",
-                    UserID = user.Id, OrganizationID = organization.Id
-                });
-        }
-
-        // Return Ok
-        return Ok(new { count = uploadFiles.Count, size });
-    }
-
+    
     private async Task<PreflightResponse> PreflightChecks(Guid caseId)
     {
         // Get user id from claim
@@ -584,57 +333,47 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Get organization id from claim
         string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        // If organization id is null then it does not exist in JWT so return a HTTP 400 error
         if (organizationId == null)
             return new PreflightResponse
                 { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Fetch organization from the database by primary key
-        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        // Get the user from the database by user ID and organization ID
+        Database.User? user = await _dbContext.User.Where(u => u.Id == userId && u.Organization.Id == organizationId)
+            .Include(user => user.Organization)
+            .SingleOrDefaultAsync();
 
-        // If organization is null then it does not exist so return a HTTP 404 error
-        if (organization == null)
-            return new PreflightResponse
-                { Error = NotFound($"A organization with the ID `{organizationId}` can not be found!") };
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (organization.Users.All(u => u.Id != userId))
+        // If user is null then they do not exist so return a HTTP 404 error
+        if (user == null)
             return new PreflightResponse
             {
-                Error = Unauthorized(
-                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!")
+                Error = NotFound(
+                    $"A user with the ID `{userId}` can not be found in the organization with the ID `{organizationId}`!")
             };
 
         // If case does not exist in organization return a HTTP 404 error
-        if (organization.Cases.All(c => c.Id != caseId))
+        Database.Case? sCase = await _dbContext.Case.SingleOrDefaultAsync(c => c.Id == caseId);
+        if (sCase == null)
             return new PreflightResponse { Error = NotFound($"A case with the ID `{caseId}` could not be found!") };
 
-        // Fetch case from database and include case users and then include user details
-        Database.Case sCase = organization.Cases.Single(c => c.Id == caseId);
-
-
         // If user does not have access to the requested case return a HTTP 403 error
-        if (sCase.Users.All(u => u.User.Id != userId))
+        if (sCase.Users.All(cu => cu.User != user))
             return new PreflightResponse
             {
                 Error = Unauthorized(
                     $"The user with the ID `{userId}` does not have access to the case with the ID `{caseId}`!")
             };
 
-        // Fetch user from database
-        Database.User user = organization.Users.Single(u => u.Id == userId);
-
-        // Return organization, user and case entity 
-        return new PreflightResponse { Organization = organization, User = user, SCase = sCase };
+        // Return organization, user, case and case user entity 
+        return new PreflightResponse
+            { Organization = user.Organization, User = user, SCase = sCase};
     }
-
 
     private class PreflightResponse
     {
         public ObjectResult? Error { get; init; }
         public Database.Organization? Organization { get; init; }
         public Database.User? User { get; init; }
-
         public Database.Case? SCase { get; init; }
     }
 }

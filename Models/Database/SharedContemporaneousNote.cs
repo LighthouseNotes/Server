@@ -8,4 +8,5 @@ public class SharedContemporaneousNote : Base
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; init; }
+    public virtual User Creator { get; set; } = null!;
 }
