@@ -1,5 +1,7 @@
-# server
+# Server
 Lighthouse Notes API server
+
+Lighthouse Notes is a source available digital forensics note taking application
 
 ## References
 - Chestnut, M. (2019) How to Auto Generate Created / Updated Field in EF Core. Available at: https://threewill.com/how-to-auto-generate-created-updated-field-in-ef-core/ (Accessed: 17 September 2023).
