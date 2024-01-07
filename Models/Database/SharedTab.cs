@@ -11,5 +11,5 @@ public class SharedTab : Base
 
     [MaxLength(50)] public required string Name { get; init; }
 
-    public User Creator { get; set; } = null!;
+    public virtual User Creator { get; set; } = null!;
 }
