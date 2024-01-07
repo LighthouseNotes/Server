@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Audit.PostgreSql.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Formatters;
@@ -40,6 +39,18 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
         ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 });
 
+// Add cross origin
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(
+        corsPolicyBuilder =>
+        {
+            corsPolicyBuilder.WithOrigins("https://localhost:5001")
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
+        });
+});
 // Add database connection
 builder.Services.AddDbContext<DatabaseContext>(options =>
 {
@@ -55,7 +66,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         // Get authority and audience from appsettings.json
         options.Authority = $"https://{builder.Configuration["Auth0:Domain"]}/";
-        options.Audience = builder.Configuration["Auth0:Audience"];
+        options.TokenValidationParameters = 
+            new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidAudience = builder.Configuration["Auth0:Audience"],
+                ValidIssuer = $"{builder.Configuration["Auth0:Domain"]}",
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero
+            };
 
         options.Events = new JwtBearerEvents
         {
@@ -166,7 +184,6 @@ Configuration.Setup()
         .DataColumn("Data")
         .LastUpdatedColumnName("Updated")
         .CustomColumn("EventType", ev => ev.EventType)
-        .CustomColumn("OrganizationId", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "OrganizationID").Value)
         .CustomColumn("UserId", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "UserID").Value));
 
 Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense("Mgo+DSMBMAY9C3t2UVhhQlVFfV5AQmBIYVp/TGpJfl96cVxMZVVBJAtUQF1hSn9RdEViWXtdcnZQRmFf;Mjk4OTQ4M0AzMjM0MmUzMDJlMzBORi9PaWU1c1dnRXEydFhxUUUxbWRQbldmL0VhVHQweHpSNFRBaEx0VkpRPQ==");
@@ -209,6 +226,8 @@ app.UseHttpsRedirection();
 
 // Routing
 app.UseRouting();
+
+app.UseCors();
 
 // Use Authentication and Authorization 
 app.UseAuthentication();
