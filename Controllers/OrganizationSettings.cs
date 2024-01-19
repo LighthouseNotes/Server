@@ -14,44 +14,6 @@ public class OrganizationSettingsController : ControllerBase
         _auditContext = new AuditScopeFactory();
     }
     
-    // GET: /organization/s3-endpoint
-    [HttpGet("s3-endpoint")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult<API.OrganizationSettings>> GetS3Endpoint()
-    {
-        // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks();
-
-        // If preflight checks returned an error return it here
-        if (preflightResponse.Error != null) return preflightResponse.Error;
-
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
-
-        // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
-
-        // Log OrganizationID and UserID
-        IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
-
-        return new API.OrganizationSettings
-        {
-            S3Endpoint = organization.Settings.S3Endpoint,
-            S3BucketName = organization.Settings.S3BucketName,
-            S3NetworkEncryption = organization.Settings.S3NetworkEncryption
-        };
-    }
-
     // GET: /organization/config
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -64,31 +26,32 @@ public class OrganizationSettingsController : ControllerBase
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
+        string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
+        long userId = preflightResponse.Details .UserId;
 
-        // Log OrganizationID and UserID
+        // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
 
         return new API.OrganizationSettings
         {
-            S3Endpoint = organization.Settings.S3Endpoint,
-            S3AccessKey = organization.Settings.S3AccessKey,
-            S3BucketName = organization.Settings.S3BucketName,
-            S3NetworkEncryption = organization.Settings.S3NetworkEncryption,
-            S3SecretKey = organization.Settings.S3SecretKey
+            S3Endpoint = organizationSettings.S3Endpoint,
+            S3AccessKey = organizationSettings.S3AccessKey,
+            S3BucketName = organizationSettings.S3BucketName,
+            S3NetworkEncryption = organizationSettings.S3NetworkEncryption,
+            S3SecretKey = organizationSettings.S3SecretKey
         };
     }
     
@@ -99,110 +62,165 @@ public class OrganizationSettingsController : ControllerBase
      [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
      [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
      [Authorize(Roles = "organization-administrator")]
-     public async Task<IActionResult> UpdateSettings(API.OrganizationSettings organizationSettings)
+     public async Task<IActionResult> UpdateSettings(API.OrganizationSettings updatedOrganizationSettings)
      {
          // Preflight checks
          PreflightResponse preflightResponse = await PreflightChecks();
 
-         // If preflight checks returned an error return it here
+         // If preflight checks returned a HTTP error raise it here
          if (preflightResponse.Error != null) return preflightResponse.Error;
 
-         // If organization or case are null return HTTP 500 error
-         if (preflightResponse.Organization == null || preflightResponse.User == null)
+         // If preflight checks details are null return a HTTP 500 error
+         if (preflightResponse.Details == null)
              return Problem(
                  "Preflight checks failed with an unknown error!"
              );
 
          // Set variables from preflight response
-         Database.Organization organization = preflightResponse.Organization;
-         Database.User user = preflightResponse.User;
+         string organizationId = preflightResponse.Details.OrganizationId;
+         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
+         long userId = preflightResponse.Details .UserId;
+         string userNameJob = preflightResponse.Details.UserNameJob;
 
-         // Log OrganizationID and UserID
+         // Log the user's organization ID and the user's ID
          IAuditScope auditScope = this.GetCurrentAuditScope();
-         auditScope.SetCustomField("OrganizationID", organization.Id);
-         auditScope.SetCustomField("UserID", user.Id);
+         auditScope.SetCustomField("OrganizationID", organizationId);
+         auditScope.SetCustomField("UserID", userId);
 
-         if (!string.IsNullOrWhiteSpace(organizationSettings.S3Endpoint) &&
-             organizationSettings.S3Endpoint != organization.Settings.S3Endpoint)
+         if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.S3Endpoint) &&
+             updatedOrganizationSettings.S3Endpoint != organizationSettings.S3Endpoint)
          {
-             organization.Settings.S3Endpoint = organizationSettings.S3Endpoint;
+             
+             // Log s3 endpoint change
+             await _auditContext.LogAsync("Lighthouse Notes",
+                 new
+                 {
+                     Action =
+                         $"`{userNameJob}` updated the organizations `S3 Endpoint` setting from {organizationSettings.S3Endpoint}` to `{updatedOrganizationSettings.S3Endpoint}`.",
+                     UserID = userId, OrganizationID = organizationId
+                 });
+             
+             organizationSettings.S3Endpoint = updatedOrganizationSettings.S3Endpoint;
          }
          
-         if (organizationSettings.S3NetworkEncryption != organization.Settings.S3NetworkEncryption)
+         if (updatedOrganizationSettings.S3NetworkEncryption != organizationSettings.S3NetworkEncryption)
          {
-             organization.Settings.S3NetworkEncryption = organizationSettings.S3NetworkEncryption;
+             // Log s3 network encryption change
+             await _auditContext.LogAsync("Lighthouse Notes",
+                 new
+                 {
+                     Action =
+                         $"`{userNameJob}` updated the organizations `S3 Network Encryption` setting from {organizationSettings.S3NetworkEncryption}` to `{updatedOrganizationSettings.S3NetworkEncryption}`.",
+                     UserID = userId, OrganizationID = organizationId
+                 });
+             
+             organizationSettings.S3NetworkEncryption = updatedOrganizationSettings.S3NetworkEncryption;
          }
          
-         if (!string.IsNullOrWhiteSpace(organizationSettings.S3BucketName) &&
-             organizationSettings.S3BucketName != organization.Settings.S3BucketName)
+         if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.S3BucketName) &&
+             updatedOrganizationSettings.S3BucketName != organizationSettings.S3BucketName)
          {
-             organization.Settings.S3BucketName = organizationSettings.S3BucketName;
+             // Log s3 bucket name change
+             await _auditContext.LogAsync("Lighthouse Notes",
+                 new
+                 {
+                     Action =
+                         $"`{userNameJob}` updated the organizations `S3 Bucket Name` setting from {organizationSettings.S3BucketName}` to `{updatedOrganizationSettings.S3BucketName}`.",
+                     UserID = userId, OrganizationID = organizationId
+                 });
+             
+             organizationSettings.S3BucketName = updatedOrganizationSettings.S3BucketName;
          }
          
-         if (!string.IsNullOrWhiteSpace(organizationSettings.S3AccessKey) &&
-             organizationSettings.S3AccessKey != organization.Settings.S3AccessKey)
+         if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.S3AccessKey) &&
+             updatedOrganizationSettings.S3AccessKey != organizationSettings.S3AccessKey)
          {
-             organization.Settings.S3AccessKey = organizationSettings.S3AccessKey;
+             // Log s3 access key change
+             await _auditContext.LogAsync("Lighthouse Notes",
+                 new
+                 {
+                     Action =
+                         $"`{userNameJob}` updated the organizations `S3 Access Key` setting from {organizationSettings.S3AccessKey}` to `{updatedOrganizationSettings.S3AccessKey}`.",
+                     UserID = userId, OrganizationID = organizationId
+                 });
+             
+             organizationSettings.S3AccessKey = updatedOrganizationSettings.S3AccessKey;
          }
          
-         if (!string.IsNullOrWhiteSpace(organizationSettings.S3SecretKey) &&
-             organizationSettings.S3SecretKey != organization.Settings.S3SecretKey)
+         if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.S3SecretKey) &&
+             updatedOrganizationSettings.S3SecretKey != organizationSettings.S3SecretKey)
          {
-             organization.Settings.S3SecretKey = organizationSettings.S3SecretKey;
+             // Log s3 secret key change however do not log the change value
+             await _auditContext.LogAsync("Lighthouse Notes",
+                 new
+                 {
+                     Action =
+                         $"`{userNameJob}` updated the organizations `S3 Secret Key` setting.",
+                     UserID = userId, OrganizationID = organizationId
+                 });
+             
+             organizationSettings.S3SecretKey = updatedOrganizationSettings.S3SecretKey;
          }
 
          await _dbContext.SaveChangesAsync();
          
          return NoContent();
      }
-     
+
      private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user id from claim
-        string? userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user ID from claim
+        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-        // If user id is null then it does not exist in JWT so return a HTTP 400 error
-        if (userId == null)
+        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
+        if (auth0UserId == null)
             return new PreflightResponse
                 { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Get organization id from claim
+        // Get organization ID from claim
         string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
         if (organizationId == null)
             return new PreflightResponse
                 { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Fetch organization from the database by primary key
-        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
+        PreflightResponseDetails? userQueryResult = await _dbContext.User
+            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+            .Select(u => new PreflightResponseDetails()
+            {
+                OrganizationId = u.Organization.Id,
+                OrganizationSettings = u.Organization.Settings,
+                UserId = u.Id,
+                UserNameJob = $"{u.DisplayName} {u.JobTitle}"
+            }).SingleOrDefaultAsync();
 
-        // If organization is null then it does not exist so return a HTTP 404 error
-        if (organization == null)
-            return new PreflightResponse
-                { Error = NotFound($"A organization with the ID `{organizationId}` can not be found!") };
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (organization.Users.All(u => u.Id != userId))
+        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
+        if (userQueryResult == null)
             return new PreflightResponse
             {
-                Error = Unauthorized(
-                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!")
+                Error = NotFound(
+                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        // Fetch user from database
-        Database.User user = organization.Users.Single(u => u.Id == userId);
-
-        // Return organization, user and case entity 
-        return new PreflightResponse { Organization = organization, User = user };
+        return new PreflightResponse()
+        {
+            Details = userQueryResult
+        };
     }
+     private class PreflightResponse
+     {
+         public ObjectResult? Error { get; init; }
+         public PreflightResponseDetails? Details { get; init; }
+     }
 
-
-    private class PreflightResponse
-    {
-        public ObjectResult? Error { get; init; }
-        public Database.Organization? Organization { get; init; }
-        public Database.User? User { get; init; }
-    }
-
+     private class PreflightResponseDetails
+     {
+         public required string OrganizationId { get; init; }
+         public required Database.OrganizationSettings OrganizationSettings { get; init; }
+         public long UserId { get; init; }
+         public required string UserNameJob { get; init; }
+     }
+     
 }

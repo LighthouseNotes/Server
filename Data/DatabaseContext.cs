@@ -75,7 +75,7 @@ public class DatabaseContext : DbContext
     public DbSet<Database.CaseUser> CaseUser => Set<Database.CaseUser>();
     public IEnumerable<Database.ContemporaneousNote> ContemporaneousNote => Set<Database.ContemporaneousNote>();
     public IEnumerable<Database.Tab> Tab => Set<Database.Tab>();
-    public IEnumerable<Database.SharedTab> SharedTab => Set<Database.SharedTab>();
+    public DbSet<Database.SharedTab> SharedTab => Set<Database.SharedTab>();
     public IEnumerable<Database.Exhibit> Exhibit => Set<Database.Exhibit>();
     public IEnumerable<Database.Hash> Hash => Set<Database.Hash>();
 

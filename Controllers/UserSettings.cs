@@ -7,11 +7,13 @@ public class UsersSettingsController : ControllerBase
 {
     private readonly AuditScopeFactory _auditContext;
     private readonly DatabaseContext _dbContext;
+    private readonly SqidsEncoder<long> _sqids;
 
-    public UsersSettingsController(DatabaseContext dbContext)
+    public UsersSettingsController(DatabaseContext dbContext, SqidsEncoder<long> sqids)
     {
         _dbContext = dbContext;
         _auditContext = new AuditScopeFactory();
+        _sqids = sqids;
     }
 
     // GET: /user/settings
@@ -21,206 +23,195 @@ public class UsersSettingsController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<API.UserSettings>> GetUserSettings()
+    public async Task<ActionResult<API.Settings>> GetUserSettings()
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
+        string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
+        long userId = preflightResponse.Details .UserId;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log OrganizationID and UserID
+        // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
 
-        return new API.UserSettings
+        // Set scheme to HTTPS if network encryption is enabled else use HTTP
+        string scheme = organizationSettings.S3NetworkEncryption ? "https" : "http";
+
+        // Return the settings
+        return new API.Settings
         {
-            TimeZone = user.Settings.TimeZone,
-            DateFormat = user.Settings.DateFormat,
-            TimeFormat = user.Settings.TimeFormat,
-            Locale = user.Settings.Locale
+            UserId = _sqids.Encode(userId),
+            TimeZone = userSettings.TimeZone,
+            DateFormat = userSettings.DateFormat,
+            TimeFormat = userSettings.TimeFormat,
+            Locale = userSettings.Locale,
+            S3Endpoint = $"{scheme}://{organizationSettings.S3Endpoint}/{organizationSettings.S3BucketName}"
         };
-
     }
-    
-      // PUT: /user/settings
-     [HttpPut]
-     [ProducesResponseType(StatusCodes.Status204NoContent)]
-     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
-     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
-     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-     [Authorize(Roles = "user")]
-     public async Task<IActionResult> UpdateUserSettings(string? userId, API.UserSettings userSettings)
-     {
-         // Get user id from claim
-         string? requestingUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-         // If user id is null then it does not exist in JWT so return a HTTP 400 error
-         if (requestingUserId == null)
-             return BadRequest("User ID can not be found in the JSON Web Token (JWT)!");
+    // PUT: /user/settings
+    [HttpPut]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [Authorize(Roles = "user")]
+    public async Task<IActionResult> UpdateUserSettings(API.UserSettings userSettingsObject)
+    {
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks();
 
-         // Get organization id from claim
-         string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
+        // If preflight checks returned a HTTP error raise it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
 
-         // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
-         if (organizationId == null)
-             return BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!");
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
+            return Problem(
+                "Preflight checks failed with an unknown error!"
+            );
 
-         // Fetch organization from the database by primary key
-         Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        // Set variables from preflight response
+        string organizationId = preflightResponse.Details.OrganizationId;
+        long userId = preflightResponse.Details .UserId;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-         // If organization is null then it does not exist so return a HTTP 404 error
-         if (organization == null)
-             return NotFound($"A organization with the ID `{organizationId}` can not be found!");
+        // Log the user's organization ID and the user's ID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
 
-         // If user does not exist in organization return a HTTP 403 error
-         if (organization.Users.All(u => u.Id != requestingUserId))
-             return Unauthorized(
-                 $"A user with the ID `{requestingUserId}` was not found in the organization with the ID `{organizationId}`!");
+        // If the provided time zone does not match the user's time zone the update it
+        if (userSettings.TimeZone != userSettingsObject.TimeZone)
+        {
+            // Log user time zone change
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"User updated their `time zone` setting from `{userSettings.TimeZone}` to `{userSettingsObject.TimeZone}`.",
+                    UserID = userId, OrganizationID = organizationId
+                });
 
-         // Fetch user from database
-         Database.User requestingUser = organization.Users.Single(u => u.Id == requestingUserId);
+            userSettings.TimeZone = userSettingsObject.TimeZone;
+        }
 
-         // Log OrganizationID and UserID
-         IAuditScope auditScope = this.GetCurrentAuditScope();
-         auditScope.SetCustomField("OrganizationID", organization.Id);
-         auditScope.SetCustomField("UserID", requestingUser.Id);
+        // If the provided date format does not match the user's date format the update it
+        if (userSettings.DateFormat != userSettingsObject.DateFormat)
+        {
+            // Log user date format change
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"User updated their `date format` setting from `{userSettings.DateFormat}` to `{userSettingsObject.DateFormat}`.",
+                    UserID = userId, OrganizationID = organizationId
+                });
 
-         Database.User? user;
-         // If provided user Id is not set, or user is trying to fetch themselves set user to requestingUser
-         if (string.IsNullOrEmpty(userId) || requestingUser.Id != userId)
-         {
-             user = requestingUser;
-         }
-         // Fetch the user based on the provide user Id
-         else
-         {
-             user = organization.Users.FirstOrDefault(u => u.Id == userId);
+            userSettings.DateFormat = userSettingsObject.DateFormat;
+        }
 
-             // If user does not exist in organization return a HTTP 403 error
-             if (user == null)
-                 return Unauthorized(
-                     $"A user with the ID `{userId}` was not found in the organization with the ID `{organization.Id}`!");
-         }
+        // If the provided time format does not match the time format the update it
+        if (userSettings.TimeFormat != userSettingsObject.TimeFormat)
+        {
+            // Log user time format change
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"User updated their `time format` setting from `{userSettings.TimeFormat}` to `{userSettingsObject.TimeFormat}`.",
+                    UserID = userId, OrganizationID = organizationId
+                });
 
-         if (user.Settings.TimeZone != userSettings.TimeZone)
-         {
-             // Log user time zone change
-             await _auditContext.LogAsync("Lighthouse Notes",
-                 new
-                 {
-                     Action =
-                         $"User setting `time zone` was updated from `{user.Settings.TimeZone}` to `{userSettings.TimeZone}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
-                     UserID = requestingUser.Id, OrganizationID = organization.Id
-                 });
+            userSettings.TimeFormat = userSettingsObject.TimeFormat;
+        }
 
-             user.Settings.TimeZone = userSettings.TimeZone;
-         }
-         
-         if (user.Settings.DateFormat != userSettings.DateFormat)
-         {
-             // Log user date format change
-             await _auditContext.LogAsync("Lighthouse Notes",
-                 new
-                 {
-                     Action =
-                         $"User setting `date format` was updated from `{user.Settings.DateFormat}` to `{userSettings.DateFormat}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
-                     UserID = requestingUser.Id, OrganizationID = organization.Id
-                 });
-             
-             user.Settings.DateFormat = userSettings.DateFormat;
-         }
-         
-         if (user.Settings.TimeFormat != userSettings.TimeFormat)
-         {
-             // Log user time format change
-             await _auditContext.LogAsync("Lighthouse Notes",
-                 new
-                 {
-                     Action =
-                         $"User setting `time format` was updated from `{user.Settings.TimeFormat}` to `{userSettings.TimeFormat}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
-                     UserID = requestingUser.Id, OrganizationID = organization.Id
-                 });
-             
-             user.Settings.TimeFormat = userSettings.TimeFormat;
-         }
-         
-         if (user.Settings.Locale != userSettings.Locale)
-         {
-             // Log user locale change
-             await _auditContext.LogAsync("Lighthouse Notes",
-                 new
-                 {
-                     Action =
-                         $"User setting `locale` was updated from `{user.Settings.Locale}` to `{userSettings.Locale}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUser.DisplayName} ({requestingUser.JobTitle})`.",
-                     UserID = requestingUser.Id, OrganizationID = organization.Id
-                 });
-             
-             user.Settings.Locale = userSettings.Locale;
-         }
+        // If the provided locale does not match the users locale the update it
+        if (userSettings.Locale != userSettingsObject.Locale)
+        {
+            // Log user locale change
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"User updated their `locale` setting from {userSettings.Locale}` to `{userSettingsObject.Locale}`.",
+                    UserID = userId, OrganizationID = organizationId
+                });
 
-         await _dbContext.SaveChangesAsync();
-         return NoContent();
-     }
-     
+            userSettings.Locale = userSettingsObject.Locale;
+        }
+
+        await _dbContext.SaveChangesAsync();
+        return NoContent();
+    }
+
      private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user id from claim
-        string? userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user ID from claim
+        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-        // If user id is null then it does not exist in JWT so return a HTTP 400 error
-        if (userId == null)
+        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
+        if (auth0UserId == null)
             return new PreflightResponse
                 { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Get organization id from claim
+        // Get organization ID from claim
         string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
         if (organizationId == null)
             return new PreflightResponse
                 { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Fetch organization from the database by primary key
-        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
+        PreflightResponseDetails? userQueryResult = await _dbContext.User
+            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+            .Select(u => new PreflightResponseDetails()
+            {
+                OrganizationId = u.Organization.Id,
+                OrganizationSettings = u.Organization.Settings,
+                UserId = u.Id,
+                UserSettings = u.Settings
+            }).SingleOrDefaultAsync();
 
-        // If organization is null then it does not exist so return a HTTP 404 error
-        if (organization == null)
-            return new PreflightResponse
-                { Error = NotFound($"A organization with the ID `{organizationId}` can not be found!") };
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (organization.Users.All(u => u.Id != userId))
+        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
+        if (userQueryResult == null)
             return new PreflightResponse
             {
-                Error = Unauthorized(
-                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!")
+                Error = NotFound(
+                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        // Fetch user from database
-        Database.User user = organization.Users.Single(u => u.Id == userId);
-
-        // Return organization, user and case entity 
-        return new PreflightResponse { Organization = organization, User = user };
+        return new PreflightResponse()
+        {
+            Details = userQueryResult
+        };
     }
-
 
     private class PreflightResponse
     {
         public ObjectResult? Error { get; init; }
-        public Database.Organization? Organization { get; init; }
-        public Database.User? User { get; init; }
+        public PreflightResponseDetails? Details { get; init; }
     }
 
+    private class PreflightResponseDetails
+    {
+        public required string OrganizationId { get; init; }
+        public required Database.OrganizationSettings OrganizationSettings { get; init; }
+        public long UserId { get; init; }
+        public required Database.UserSettings UserSettings { get; init; }
+    }
 }

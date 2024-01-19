@@ -1,5 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Server.Models.Database;
 
@@ -12,6 +11,6 @@ public class Organization : Base
 
     [MaxLength(50)] public required string Name { get; init; }
     [MaxLength(255)] public required string DisplayName { get; init; }
-    public virtual IEnumerable<User> Users { get; } = new List<User>();
-    public virtual OrganizationSettings Settings{ get; init; } = null!;
+    public IEnumerable<User> Users { get; } = new List<User>();
+    public OrganizationSettings Settings { get; init; } = null!;
 }

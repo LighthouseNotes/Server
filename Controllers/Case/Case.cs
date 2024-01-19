@@ -1,19 +1,20 @@
 ﻿// ReSharper disable InconsistentNaming
-
 namespace Server.Controllers.Case;
 
 [ApiController]
 [Route("/case")]
 [AuditApi(EventTypeName = "HTTP")]
-public class CasesController : ControllerBase
+public class CaseController : ControllerBase
 {
     private readonly AuditScopeFactory _auditContext;
     private readonly DatabaseContext _dbContext;
+    private readonly SqidsEncoder<long> _sqids;
 
-    public CasesController(DatabaseContext context)
+    public CaseController(DatabaseContext dbContext, SqidsEncoder<long> sqids)
     {
-        _dbContext = context;
+        _dbContext = dbContext;
         _auditContext = new AuditScopeFactory();
+        _sqids = sqids;
     }
 
     // GET: /cases
@@ -27,119 +28,139 @@ public class CasesController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<IEnumerable<API.Case>>> GetCases()
     {
-      
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization or user are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
-        
-        // Log OrganizationID and UserID
+        string organizationId = preflightResponse.Details.OrganizationId;
+        long userId = preflightResponse.Details .UserId;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
+
+        // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
 
-       // Get the user's time zone
-        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
-
-        List<Database.Case> cases = await _dbContext.Case.Where(c => c.Users.All(cu => cu.User == user)).ToListAsync();
-
-        return cases.Select(c => new API.Case
-        {
-            Id = c.Id,
-            DisplayId = c.DisplayId,
-            Name = c.Name,
-            DisplayName = c.DisplayName,
-            SIO = c.Users.Where(cu => cu.IsSIO).Select(cu =>  new API.User
+        // Get the user's time zone
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
+        
+        return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
+            .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
             {
-                Id = cu.User.Id, JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName, GivenName = cu.User.GivenName,
-                LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress, ProfilePicture = cu.User.ProfilePicture,
-                Organization = new API.Organization
-                    { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                Roles = cu.User.Roles.Select(r => r.Name).ToList()
-            }).Single(),
-            Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
-            Modified =  TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
-            Status = c.Status,
-            Users = c.Users.Select(cu => new API.User
-            {
-                Id = cu.User.Id, JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                ProfilePicture = cu.User.ProfilePicture,
-                Organization = new API.Organization
-                    { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                Roles = cu.User.Roles.Select(r => r.Name).ToList()
-            }).ToList()
-        }).ToList();
+                Id = _sqids.Encode(c.Id),
+                DisplayId = c.DisplayId,
+                Name = c.Name,
+                DisplayName = c.DisplayName,
+                SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
+                {
+                    Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                    GivenName = cu.User.GivenName,
+                    LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                    ProfilePicture = cu.User.ProfilePicture,
+                    Organization = new API.Organization
+                        { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                    Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                }).Single(),
+                Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
+                Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
+                Status = c.Status,
+                Users = c.Users.Select(cu => new API.User
+                {
+                    Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                    GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                    ProfilePicture = cu.User.ProfilePicture,
+                    Organization = new API.Organization
+                        { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                    Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                }).ToList()
+            }).ToList();
     }
 
     // GET: /case/?
-    [HttpGet("{caseId:guid}")]
+    [HttpGet("{caseId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<API.Case>> GetCase(Guid caseId)
+    public async Task<ActionResult<API.Case>> GetCase(string caseId)
     {
         // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks(caseId);
+        PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
+        string organizationId = preflightResponse.Details.OrganizationId;
+        long userId = preflightResponse.Details .UserId;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log OrganizationID and UserID
+        // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
         
         // Get the user's time zone
-        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
+        
+        // Get case from the database including the required entities 
+        Database.Case? sCase = await _dbContext.Case
+            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Include(c => c.Users)
+                .ThenInclude(cu => cu.User)
+                    .ThenInclude(u => u.Organization)
+            .Include(c => c.Users)
+                .ThenInclude(cu => cu.User)
+                    .ThenInclude(u => u.Roles)
+            .SingleOrDefaultAsync();
 
+        // If case does not exist then return a HTTP 404 error 
+        if (sCase == null)
+        {
+            return NotFound($"The case `{caseId}` does not exist!"); 
+            // The case might not exist or the user does not have access to the case
+        }
+        
         // Return requested case details
         return new API.Case
         {
-            Id = sCase.Id,
+            Id = _sqids.Encode(sCase.Id),
             DisplayId = sCase.DisplayId,
             Name = sCase.Name,
             DisplayName = sCase.DisplayName,
-            SIO = sCase.Users.Where(cu => cu.IsSIO).Select(cu =>  new API.User
+            SIO = sCase.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
             {
-                Id = cu.User.Id, JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName, GivenName = cu.User.GivenName,
-                LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress, ProfilePicture = cu.User.ProfilePicture,
+                Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                GivenName = cu.User.GivenName,
+                LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                ProfilePicture = cu.User.ProfilePicture,
                 Organization = new API.Organization
                     { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
                 Roles = cu.User.Roles.Select(r => r.Name).ToList()
             }).Single(),
             Created = TimeZoneInfo.ConvertTimeFromUtc(sCase.Created, timeZone),
-            Modified =  TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
+            Modified = TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
-                Id = cu.User.Id, JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                 GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                 ProfilePicture = cu.User.ProfilePicture,
                 Organization = new API.Organization
@@ -150,37 +171,50 @@ public class CasesController : ControllerBase
     }
 
     // PUT: /case/?
-    [HttpPut("{caseId:guid}")]
+    [HttpPut("{caseId}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "organization-administrator")]
-    public async Task<ActionResult> UpdateCase(Guid caseId, API.UpdateCase updatedCase)
+    public async Task<ActionResult> UpdateCase(string caseId, API.UpdateCase updatedCase)
     {
         // Preflight checks
-        PreflightResponse preflightResponse = await PreflightChecks(caseId);
+        PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null ||
-            preflightResponse.SCase == null)
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User user = preflightResponse.User;
-        Database.Case sCase = preflightResponse.SCase;
+        string organizationId = preflightResponse.Details.OrganizationId;
+        long userId = preflightResponse.Details .UserId;
+        string userNameJob = preflightResponse.Details.UserNameJob;
 
-        // Log OrganizationID and UserID
+        // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
+        
+        // Get case from the database including the required entities 
+        Database.Case? sCase = await _dbContext.Case
+            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Include(c => c.Users)
+            .ThenInclude(cu => cu.User)
+            .SingleOrDefaultAsync();
+
+        // If case does not exist then return a HTTP 404 error 
+        if (sCase == null)
+        {
+            return NotFound($"The case `{caseId}` does not exist!"); 
+            // The case might not exist or the user does not have access to the case
+        }
 
         // Update values in the database if the provided values are not null
         if (updatedCase.Name != null)
@@ -190,8 +224,8 @@ public class CasesController : ControllerBase
                 new
                 {
                     Action =
-                        $"Case name was updated from `{sCase.Name}` to `{updatedCase.Name}` for the case with the ID `{sCase.DisplayId}` by `{user.DisplayName} ({user.JobTitle})`.",
-                    UserID = user.Id, OrganizationID = organization.Id
+                        $"Case name was updated from `{sCase.Name}` to `{updatedCase.Name}` for the case with the ID `{sCase.DisplayId}` by `{userNameJob}`.",
+                    UserID = userId, OrganizationID = organizationId
                 });
 
             // Update case name in the database
@@ -205,8 +239,8 @@ public class CasesController : ControllerBase
                 new
                 {
                     Action =
-                        $"Case ID was updated from `{sCase.DisplayId}` to `{updatedCase.DisplayId}` for the case with the name `{sCase.Name}` by `{user.DisplayName} ({user.JobTitle})`.",
-                    UserID = user.Id, OrganizationID = organization.Id
+                        $"Case ID was updated from `{sCase.DisplayId}` to `{updatedCase.DisplayId}` for the case with the name `{sCase.Name}` by `{userNameJob}`.",
+                    UserID = userId, OrganizationID = organizationId
                 });
 
             // Update case ID in the database
@@ -220,8 +254,8 @@ public class CasesController : ControllerBase
                 new
                 {
                     Action =
-                        $"Case status was updated from `{sCase.Status}` to `{updatedCase.Status}`  for the case `{sCase.DisplayName}` by `{user.DisplayName} ({user.JobTitle})`.",
-                    UserID = user.Id, OrganizationID = organization.Id
+                        $"Case status was updated from `{sCase.Status}` to `{updatedCase.Status}`  for the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                    UserID = userId, OrganizationID = organizationId
                 });
 
             // Update case status in the database
@@ -231,13 +265,16 @@ public class CasesController : ControllerBase
         // If a new SIO user is provided then remove the current SIO and update
         if (updatedCase.SIOUserId != null)
         {
+            // Get SIO user ID from squid 
+            long rawSIOUserId = _sqids.Decode(updatedCase.SIOUserId)[0];
+
             // Check new SIO user exists 
             Database.User? newSIO =
-                await _dbContext.User.Where(u => u.Id == updatedCase.SIOUserId).FirstOrDefaultAsync();
+                await _dbContext.User.Where(u => u.Id == rawSIOUserId).FirstOrDefaultAsync();
 
             if (newSIO == null)
                 return Unauthorized(
-                    $"A user with the ID `{updatedCase.SIOUserId}` was not found in the organization with the ID `{organization.Id}`!");
+                    $"A user with the ID `{updatedCase.SIOUserId}` was not found in the organization with the ID `{organizationId}`!");
 
             // Remove current SIO users access
             Database.CaseUser oldSIO = sCase.Users.Single(cu => cu.IsSIO);
@@ -247,8 +284,8 @@ public class CasesController : ControllerBase
                 new
                 {
                     Action =
-                        $" `SIO {oldSIO.User.DisplayName}  ({oldSIO.User.JobTitle})` was removed from the case `{sCase.DisplayName}` by `{user.DisplayName} ({user.JobTitle})`.",
-                    UserID = user.Id, OrganizationID = organization.Id
+                        $" `SIO {oldSIO.User.DisplayName}  ({oldSIO.User.JobTitle})` was removed from the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                    UserID = userId, OrganizationID = organizationId
                 });
 
             // Set old SIO user to false
@@ -259,8 +296,8 @@ public class CasesController : ControllerBase
                 new
                 {
                     Action =
-                        $" `SIO {newSIO.DisplayName}  ({newSIO.JobTitle}) is now the SIO for the case `{sCase.DisplayName}` this change was made by `{user.DisplayName} ({user.JobTitle})`.",
-                    UserID = user.Id, OrganizationID = organization.Id
+                        $" `SIO {newSIO.DisplayName} {newSIO.JobTitle}` is now the SIO for the case `{sCase.DisplayName}` this change was made by `{userNameJob}`.",
+                    UserID = userId, OrganizationID = organizationId
                 });
 
             // Set new SIO user to true
@@ -271,8 +308,8 @@ public class CasesController : ControllerBase
                 new
                 {
                     Action =
-                        $" `SIO {newSIO.DisplayName} ({newSIO.JobTitle})` was given access to the case `{sCase.DisplayName}` by `{user.DisplayName} ({user.JobTitle})`.",
-                    UserID = user.Id, OrganizationID = organization.Id
+                        $" `SIO {newSIO.DisplayName} ({newSIO.JobTitle})` was given access to the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                    UserID = userId, OrganizationID = organizationId
                 });
         }
 
@@ -281,11 +318,15 @@ public class CasesController : ControllerBase
 
             // Update users
             foreach (string userToChangeId in updatedCase.UserIds)
+            {
+                // Get user ID from squid
+                long rawUserId = _sqids.Decode(userToChangeId)[0];
+
                 // If user already has access to the case remove them
-                if (sCase.Users.All(u => u.User.Id == userToChangeId))
+                if (sCase.Users.All(u => u.User.Id == rawUserId))
                 {
                     // Select user
-                    Database.CaseUser caseUser = sCase.Users.First(u => u.User.Id == userToChangeId);
+                    Database.CaseUser caseUser = sCase.Users.First(u => u.User.Id == rawUserId);
 
                     // Remove user from case
                     sCase.Users.Remove(caseUser);
@@ -295,20 +336,20 @@ public class CasesController : ControllerBase
                         new
                         {
                             Action =
-                                $" `{caseUser.User.DisplayName} ({caseUser.User.JobTitle})` was removed from the case `{sCase.DisplayName}` by `{user.DisplayName} ({user.JobTitle})`.",
-                            UserID = user.Id, OrganizationID = organization.Id
+                                $" `{caseUser.User.DisplayName} ({caseUser.User.JobTitle})` was removed from the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                            UserID = userId, OrganizationID = organizationId
                         });
                 }
                 // Else add user to case
                 else
                 {
                     // Fetch user to add from the database
-                    Database.User? userToAdd = organization.Users.FirstOrDefault(u => u.Id == userToChangeId);
+                    Database.User? userToAdd = await _dbContext.User.SingleOrDefaultAsync(u => u.Id == rawUserId && u.Organization.Id == organizationId);
 
                     // If user can not be found then
                     if (userToAdd == null)
                         return Unauthorized(
-                            $"A user with the ID `{userToChangeId}` was not found in the organization with the ID `{organization.Id}`!");
+                            $"A user with the ID `{userToChangeId}` was not found in the organization with the ID `{organizationId}`!");
 
                     // Add user to case
                     sCase.Users.Add(new Database.CaseUser
@@ -321,10 +362,12 @@ public class CasesController : ControllerBase
                         new
                         {
                             Action =
-                                $" `{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName}` by `{user.DisplayName} ({user.JobTitle})`.",
-                            UserID = user.Id, OrganizationID = organization.Id
+                                $" `{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                            UserID = userId, OrganizationID = organizationId
                         });
                 }
+            }
+
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
@@ -343,55 +386,58 @@ public class CasesController : ControllerBase
     [Authorize(Roles = "sio,organization-administrator")]
     public async Task<ActionResult<API.Case>> CreateCase(API.AddCase caseAddObject)
     {
-        // Get user id from claim
-        string? userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+      
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If user id is null then it does not exist in JWT so return a HTTP 400 error
-        if (userId == null)
-            return BadRequest("User ID can not be found in the JSON Web Token (JWT)!");
+        // If preflight checks returned a HTTP error raise it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // Get organization id from claim
-        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
+            return Problem(
+                "Preflight checks failed with an unknown error!"
+            );
 
-        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
-        if (organizationId == null)
-            return BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!");
+        // Set variables from preflight response
+        string organizationId = preflightResponse.Details.OrganizationId;
+        long userId = preflightResponse.Details .UserId;
+        string userNameJob = preflightResponse.Details.UserNameJob;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Fetch organization from the database by primary key
-        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
-
-        // If organization is null then it does not exist so return a HTTP 404 error
-        if (organization == null)
-            return NotFound($"A organization with the ID `{organizationId}` can not be found!");
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (organization.Users.All(u => u.Id != userId))
-            return Unauthorized(
-                $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!");
-
-        // Fetch user from database
-        Database.User user = organization.Users.Single(u => u.Id == userId);
-        
-        // Log OrganizationID and UserID
+        // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organization.Id);
-        auditScope.SetCustomField("UserID", user.Id);
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
+        
 
+        long rawSIOUserId;
         // If no SIO is provided then the user making the request is the SIO
-        caseAddObject.SIOUserId ??= userId;
+        if (caseAddObject.SIOUserId == null)
+        {
+            rawSIOUserId = userId;
+        }
+        else
+        {
+            // Get SIO user ID from squid
+            rawSIOUserId = _sqids.Decode(caseAddObject.SIOUserId)[0];
 
-        // If the user is an SIO and is trying to create an case for another user return a HTTP 401 error
-        if (User.IsInRole("sio") && caseAddObject.SIOUserId != userId)
-            return Unauthorized("As you hold an SIO role you can only create cases where you are the SIO!");
+            // If the user is an SIO and is trying to create an case for another user return a HTTP 401 error
+            if (!User.IsInRole("organization-administrator") && rawSIOUserId != userId)
+                return Unauthorized("As you hold an SIO role you can only create cases where you are the SIO!");
+
+          
+        }
 
         // Get SIO user from the database
-        Database.User? SIOUser = organization.Users.FirstOrDefault(u => u.Id == caseAddObject.SIOUserId);
-
+        Database.User? SIOUser = await _dbContext.User
+            .Include(u => u.Roles)
+            .Include(u => u.Organization)
+            .FirstOrDefaultAsync(u => u.Id == rawSIOUserId && u.Organization.Id == organizationId);
 
         if (SIOUser == null)
             return Unauthorized(
                 $"A user with the ID `{caseAddObject.SIOUserId}` was not found in the organization with the ID `{organizationId}`!");
-
 
         // Create the case
         Database.Case sCase = new()
@@ -401,7 +447,7 @@ public class CasesController : ControllerBase
             DisplayName = $"{caseAddObject.DisplayId} {caseAddObject.Name}",
             Status = "Open"
         };
-        
+
         // Give the SIO user access to the case and make them SIO
         sCase.Users.Add(new Database.CaseUser()
         {
@@ -414,24 +460,31 @@ public class CasesController : ControllerBase
             new
             {
                 Action =
-                    $"The case `{sCase.DisplayName}` was created by `{user.DisplayName} ({user.JobTitle})`.",
+                    $"The case `{sCase.DisplayName}` was created by `{userNameJob}`.",
                 UserID = userId, OrganizationID = organizationId
             });
 
         // Add the case to the database
         _dbContext.Case.Add(sCase);
-        
+
         // Add users to case
         if (caseAddObject.UserIds != null)
             foreach (string userToAddId in caseAddObject.UserIds)
             {
-                // Fetch user to add from the database
-                Database.User? userToAdd = organization.Users.FirstOrDefault(u => u.Id == userToAddId);
+                // Get user ID from squid 
+                long rawUserId = _sqids.Decode(userToAddId)[0];
 
-                // If user can not be found then
+                // If the user is trying to add the SIO user to the case - skip as the SIO user has already been added
+                if (rawUserId == SIOUser.Id) continue;
+
+                // Fetch user to add from the database
+                Database.User? userToAdd = await _dbContext.User
+                    .FirstOrDefaultAsync(u => u.Id == rawUserId && u.Organization.Id == organizationId);
+
+                // If user can not be found then return a HTTP 404
                 if (userToAdd == null)
                     return
-                        Unauthorized(
+                        NotFound(
                             $"A user with the ID `{userToAddId}` was not found in the organization with the ID `{organizationId}`!");
 
                 // Add user to case
@@ -445,38 +498,46 @@ public class CasesController : ControllerBase
                     new
                     {
                         Action =
-                            $"`{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName}` by `{user.DisplayName} ({user.JobTitle})`.",
+                            $"`{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName}` by `{userNameJob}`.",
                         UserID = userId, OrganizationID = organizationId
                     });
             }
-
+        
         // Get the user's time zone
-        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(user.Settings.TimeZone);
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
 
+        // Explicitly load roles for each user
+        foreach (Database.CaseUser caseUser in sCase.Users)
+            await _dbContext.Entry(caseUser.User)
+                .Collection(u => u.Roles)
+                .LoadAsync();
+
         // Return the created case
         return new API.Case
         {
-            Id = sCase.Id,
+            Id = _sqids.Encode(sCase.Id),
             DisplayId = sCase.DisplayId,
             Name = sCase.Name,
             DisplayName = sCase.DisplayName,
-            SIO = sCase.Users.Where(cu => cu.IsSIO).Select(cu =>  new API.User
+            SIO = new API.User
             {
-                Id = cu.User.Id, JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName, GivenName = cu.User.GivenName,
-                LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress, ProfilePicture = cu.User.ProfilePicture,
+                Id = _sqids.Encode(SIOUser.Id), JobTitle = SIOUser.JobTitle, DisplayName = SIOUser.DisplayName,
+                GivenName = SIOUser.GivenName,
+                LastName = SIOUser.LastName, EmailAddress = SIOUser.EmailAddress,
+                ProfilePicture = SIOUser.ProfilePicture,
                 Organization = new API.Organization
-                    { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                Roles = cu.User.Roles.Select(r => r.Name).ToList()
-            }).Single(),
+                    { Name = SIOUser.Organization.DisplayName, DisplayName = SIOUser.Organization.DisplayName },
+                Roles = SIOUser.Roles.Select(r => r.Name).ToList()
+            },
             Created = TimeZoneInfo.ConvertTimeFromUtc(sCase.Created, timeZone),
-            Modified =  TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
+            Modified = TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
-                Id = cu.User.Id, JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                 GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                 ProfilePicture = cu.User.ProfilePicture,
                 Organization = new API.Organization
@@ -486,66 +547,60 @@ public class CasesController : ControllerBase
         };
     }
 
-     private async Task<PreflightResponse> PreflightChecks(Guid caseId = new())
+      private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user id from claim
-        string? userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user ID from claim
+        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-        // If user id is null then it does not exist in JWT so return a HTTP 400 error
-        if (userId == null)
+        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
+        if (auth0UserId == null)
             return new PreflightResponse
                 { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Get organization id from claim
+        // Get organization ID from claim
         string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
         if (organizationId == null)
             return new PreflightResponse
                 { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Get the user from the database by user ID and organization ID
-        Database.User? user = await _dbContext.User.Where(u => u.Id == userId && u.Organization.Id == organizationId)
-            .Include(user => user.Organization)
-            .SingleOrDefaultAsync();
+        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
+        PreflightResponseDetails? userQueryResult = await _dbContext.User
+            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+            .Select(u => new PreflightResponseDetails()
+            {
+                OrganizationId = u.Organization.Id,
+                UserId = u.Id,
+                UserNameJob = $"{u.DisplayName} {u.JobTitle}",
+                UserSettings = u.Settings
+            }).SingleOrDefaultAsync();
 
-        // If user is null then they do not exist so return a HTTP 404 error
-        if (user == null)
+        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
+        if (userQueryResult == null)
             return new PreflightResponse
             {
                 Error = NotFound(
-                    $"A user with the ID `{userId}` can not be found in the organization with the ID `{organizationId}`!")
+                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        // If caseId is not provided then return
-        if (caseId == Guid.Empty)
+        return new PreflightResponse()
         {
-            return new PreflightResponse { Organization = user.Organization, User = user };
-        }
-        
-        // If case does not exist in organization return a HTTP 404 error
-        Database.Case? sCase = await _dbContext.Case.SingleOrDefaultAsync(c => c.Id == caseId);
-        if (sCase == null)
-            return new PreflightResponse { Error = NotFound($"A case with the ID `{caseId}` could not be found!") };
-
-        // If user does not have access to the requested case return a HTTP 403 error
-        if (sCase.Users.All(u => u.User.Id != userId))
-            return new PreflightResponse
-            {
-                Error = Unauthorized(
-                    $"The user with the ID `{userId}` does not have access to the case with the ID `{caseId}`!")
-            };
-
-        // Return organization, user and case entity 
-        return new PreflightResponse { Organization = user.Organization, User = user, SCase = sCase };
+            Details = userQueryResult
+        };
     }
-
 
     private class PreflightResponse
     {
         public ObjectResult? Error { get; init; }
-        public Database.Organization? Organization { get; init; }
-        public Database.User? User { get; init; }
-        public Database.Case? SCase { get; init; }
+        public PreflightResponseDetails? Details { get; init; }
+    }
+
+    private class PreflightResponseDetails
+    {
+        public required string OrganizationId { get; init; }
+        public long UserId { get; init; }
+        public required string UserNameJob { get; init; }
+        public required Database.UserSettings UserSettings { get; init; }
     }
 }

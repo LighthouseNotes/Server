@@ -1,12 +1,10 @@
-﻿using System.Runtime.Serialization;
-
-// ReSharper disable UnusedAutoPropertyAccessor.Global
+﻿// ReSharper disable UnusedAutoPropertyAccessor.Global
 
 namespace Server.Models.API;
 
 public class Case
 {
-    public Guid Id { get; init; }
+    public required string Id { get; init; }
     public required string DisplayId { get; init; }
     public required string Name { get; init; }
     public required string DisplayName { get; init; }
@@ -21,11 +19,7 @@ public class AddCase
 {
     public required string DisplayId { get; set; }
     public required string Name { get; set; }
-    
-    [DataMember(Name = "SIOUserId", EmitDefaultValue = false)]
     public string? SIOUserId { get; set; }
-
-    [DataMember(Name = "UserIds", EmitDefaultValue = false)]
     public List<string>? UserIds { get; set; }
 }
 

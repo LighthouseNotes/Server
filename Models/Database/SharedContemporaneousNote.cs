@@ -1,12 +1,7 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
-namespace Server.Models.Database;
+﻿namespace Server.Models.Database;
 
 public class SharedContemporaneousNote : Base
 {
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public Guid Id { get; init; }
+    [Key] public long Id { get; init; }
     public virtual User Creator { get; set; } = null!;
 }

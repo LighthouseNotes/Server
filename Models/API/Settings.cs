@@ -16,3 +16,13 @@ public class UserSettings
     public required string TimeFormat { get; init; }
     public required string Locale { get; init; }
 }
+
+public class Settings
+{
+    public required string UserId { get; init; }
+    public required string TimeZone { get; init; }
+    public required string DateFormat { get; init; }
+    public required string TimeFormat { get; init; }
+    public required string Locale { get; init; }
+    public required string S3Endpoint { get; init; }
+}

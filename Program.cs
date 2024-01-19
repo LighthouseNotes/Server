@@ -54,11 +54,17 @@ builder.Services.AddCors(options =>
 // Add database connection
 builder.Services.AddDbContext<DatabaseContext>(options =>
 {
-    options.UseLazyLoadingProxies();
     options.UseNpgsql(builder.Configuration.GetConnectionString("DatabaseContext") ??
-                      throw new InvalidOperationException("Connection string 'DatabaseContext' not found."));
+                      throw new InvalidOperationException("Connection string 'DatabaseContext' not found in appssettings.json"));
     options.EnableSensitiveDataLogging();
+    //options.ConfigureWarnings(w => w.Throw(RelationalEventId.MultipleCollectionIncludeWarning));
 });
+
+builder.Services.AddSingleton(new SqidsEncoder<long>(new SqidsOptions
+{
+    Alphabet = builder.Configuration["Sqids:Alphabet"] ?? throw new InvalidOperationException("Squid alphabet `Sqids:Alphabet` not found in appssettings.json"),
+    MinLength = Convert.ToInt32(builder.Configuration["Sqids:MinLength"])
+}));
 
 // Add authentication 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -72,7 +78,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 ValidAudience = builder.Configuration["Auth0:Audience"],
                 ValidIssuer = $"{builder.Configuration["Auth0:Domain"]}",
                 ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
+                ClockSkew = TimeSpan.Zero,
             };
 
         options.Events = new JwtBearerEvents

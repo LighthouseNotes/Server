@@ -1,10 +1,8 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace Server.Models.Database;
+﻿namespace Server.Models.Database;
 
 public class Role : Base
 {
-    [Key] public int Id { get; init; }
+    [Key] public long Id { get; init; }
 
     [MaxLength(50)] public required string Name { get; init; }
 }

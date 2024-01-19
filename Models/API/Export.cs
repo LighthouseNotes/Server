@@ -15,17 +15,17 @@ public class Export
 public class ContemporaneousNotesExport
 {
     public required string Content { get; set; }
-    public DateTime DateTime {get; set; }
+    public DateTime DateTime { get; set; }
 }
 
 public class TabExport
 {
-    public string Name { get; set; }
-    public string Content { get; set; }
+    public required string Name { get; set; }
+    public required string Content { get; set; }
 }
 
 public class SharedTabExport
 {
-    public string Name { get; set; }
-    public string Content { get; set; }
+    public required string Name { get; set; }
+    public required string Content { get; set; }
 }
