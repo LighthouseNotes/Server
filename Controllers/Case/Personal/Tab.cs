@@ -55,7 +55,7 @@ public class TabsController : ControllerBase
 
         // Get case user from the database including the required entities 
         Database.CaseUser? caseUser = await _dbContext.CaseUser
-            .Where(cu => cu.Id == _sqids.Decode(caseId)[0] && cu.User.Id == userId)
+            .Where(cu => cu.Case.Id == _sqids.Decode(caseId)[0] && cu.User.Id == userId)
             .Include(cu => cu.Tabs)
             .SingleOrDefaultAsync();
 
