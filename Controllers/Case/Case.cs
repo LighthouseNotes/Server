@@ -217,7 +217,7 @@ public class CaseController : ControllerBase
         }
 
         // Update values in the database if the provided values are not null
-        if (updatedCase.Name != null)
+        if (updatedCase.Name != null  && updatedCase.Name != sCase.Name)
         {
             // Log case name change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -232,7 +232,7 @@ public class CaseController : ControllerBase
             sCase.Name = updatedCase.Name;
         }
 
-        if (updatedCase.DisplayId != null)
+        if (updatedCase.DisplayId != null && updatedCase.DisplayId != sCase.DisplayId)
         {
             // Log case ID change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -247,7 +247,7 @@ public class CaseController : ControllerBase
             sCase.DisplayId = updatedCase.DisplayId;
         }
 
-        if (updatedCase.Status != null)
+        if (updatedCase.Status != null && updatedCase.Status != sCase.Status)
         {
             // Log case ID change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -263,7 +263,7 @@ public class CaseController : ControllerBase
         }
 
         // If a new SIO user is provided then remove the current SIO and update
-        if (updatedCase.SIOUserId != null)
+        if (updatedCase.SIOUserId != null && _sqids.Decode(updatedCase.SIOUserId)[0] != sCase.Users.SingleOrDefault(cu => cu.IsSIO)!.User.Id)
         {
             // Get SIO user ID from squid 
             long rawSIOUserId = _sqids.Decode(updatedCase.SIOUserId)[0];
@@ -312,63 +312,7 @@ public class CaseController : ControllerBase
                     UserID = userId, OrganizationID = organizationId
                 });
         }
-
-        // If userIDs are provided then add / remove them from the case
-        if (updatedCase.UserIds != null)
-
-            // Update users
-            foreach (string userToChangeId in updatedCase.UserIds)
-            {
-                // Get user ID from squid
-                long rawUserId = _sqids.Decode(userToChangeId)[0];
-
-                // If user already has access to the case remove them
-                if (sCase.Users.All(u => u.User.Id == rawUserId))
-                {
-                    // Select user
-                    Database.CaseUser caseUser = sCase.Users.First(u => u.User.Id == rawUserId);
-
-                    // Remove user from case
-                    sCase.Users.Remove(caseUser);
-
-                    // Log removal of user
-                    await _auditContext.LogAsync("Lighthouse Notes",
-                        new
-                        {
-                            Action =
-                                $" `{caseUser.User.DisplayName} ({caseUser.User.JobTitle})` was removed from the case `{sCase.DisplayName}` by `{userNameJob}`.",
-                            UserID = userId, OrganizationID = organizationId
-                        });
-                }
-                // Else add user to case
-                else
-                {
-                    // Fetch user to add from the database
-                    Database.User? userToAdd = await _dbContext.User.SingleOrDefaultAsync(u => u.Id == rawUserId && u.Organization.Id == organizationId);
-
-                    // If user can not be found then
-                    if (userToAdd == null)
-                        return Unauthorized(
-                            $"A user with the ID `{userToChangeId}` was not found in the organization with the ID `{organizationId}`!");
-
-                    // Add user to case
-                    sCase.Users.Add(new Database.CaseUser
-                    {
-                        User = userToAdd
-                    });
-
-                    // Log addition of user
-                    await _auditContext.LogAsync("Lighthouse Notes",
-                        new
-                        {
-                            Action =
-                                $" `{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName}` by `{userNameJob}`.",
-                            UserID = userId, OrganizationID = organizationId
-                        });
-                }
-            }
-
-
+        
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
 
@@ -572,7 +516,7 @@ public class CaseController : ControllerBase
             {
                 OrganizationId = u.Organization.Id,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} {u.JobTitle}",
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
                 UserSettings = u.Settings
             }).SingleOrDefaultAsync();
 
