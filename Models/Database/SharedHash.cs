@@ -1,4 +1,5 @@
-﻿namespace Server.Models.Database;
+﻿// ReSharper disable UnusedMember.Global
+namespace Server.Models.Database;
 
 public class SharedHash
 {

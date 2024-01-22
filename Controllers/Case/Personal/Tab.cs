@@ -62,7 +62,7 @@ public class TabsController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -116,7 +116,7 @@ public class TabsController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Convert tab ID squid to ID 
         long rawTabId = _sqids.Decode(tabId)[0];
 
@@ -182,7 +182,7 @@ public class TabsController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Create tab model
         Database.Tab tabModel = new()
         {
@@ -258,7 +258,7 @@ public class TabsController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Convert tab ID squid to ID 
         long rawTabId = _sqids.Decode(tabId)[0];
 
@@ -391,7 +391,7 @@ public class TabsController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Convert tab ID squid to ID 
         long rawTabId = _sqids.Decode(tabId)[0];
 
@@ -578,7 +578,7 @@ public class TabsController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,

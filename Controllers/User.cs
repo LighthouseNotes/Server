@@ -40,7 +40,7 @@ public class UserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -94,7 +94,7 @@ public class UserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long requestingUserId = preflightResponse.Details .UserId;
+        long requestingUserId = preflightResponse.Details.UserId;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -105,7 +105,8 @@ public class UserController : ControllerBase
         long rawUserId = string.IsNullOrEmpty(userId) ? requestingUserId : _sqids.Decode(userId).Single();
 
         // Fetch the user based on the provide user ID
-        Database.User? user = _dbContext.User.FirstOrDefault(u => u.Id == rawUserId && u.Organization.Id == organizationId);
+        Database.User? user =
+            _dbContext.User.FirstOrDefault(u => u.Id == rawUserId && u.Organization.Id == organizationId);
 
         // If user does not exist in organization return a HTTP 403 error
         if (user == null)
@@ -155,7 +156,7 @@ public class UserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long requestingUserId = preflightResponse.Details .UserId;
+        long requestingUserId = preflightResponse.Details.UserId;
         string requestingUserNameJob = preflightResponse.Details.UserNameJob;
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -165,20 +166,25 @@ public class UserController : ControllerBase
         bool updateThemselves = false;
         long rawUserId;
 
+        // If user ID is not provided then set userID to requesting user Dd and set update themselves to true
         if (string.IsNullOrEmpty(userId))
         {
             rawUserId = requestingUserId;
             updateThemselves = true;
         }
+        // Else user ID is provided so decode squid to raw user Id
         else
         {
+            // Convert the provided user ID squid to the raw user ID
             rawUserId = _sqids.Decode(userId).Single();
 
+            // If the provided user ID is equal to requesting users ID then the user is updating themselves
             if (rawUserId == requestingUserId) updateThemselves = true;
         }
 
         // Fetch the user based on the provide user ID
-        Database.User? user = _dbContext.User.Include(u => u.Roles).FirstOrDefault(u => u.Id == rawUserId && u.Organization.Id == organizationId);
+        Database.User? user = _dbContext.User.Include(u => u.Roles)
+            .FirstOrDefault(u => u.Id == rawUserId && u.Organization.Id == organizationId);
 
         // If user does not exist in organization return a HTTP 403 error
         if (user == null)
@@ -195,7 +201,7 @@ public class UserController : ControllerBase
                     new
                     {
                         Action =
-                            $"User job title was updated from `{user.JobTitle}` to `{updatedUser.JobTitle}` for the user `{user.DisplayName} ({updatedUser.JobTitle})` by `{requestingUserNameJob}`.",
+                            $"`{user.DisplayName} ({updatedUser.JobTitle})` updated their job title from `{user.JobTitle}` to `{updatedUser.JobTitle}`.",
                         UserID = requestingUserId, OrganizationID = organizationId
                     });
             else
@@ -214,14 +220,26 @@ public class UserController : ControllerBase
         // If given name is provided updated it
         if (!string.IsNullOrWhiteSpace(updatedUser.GivenName) && updatedUser.GivenName != user.GivenName)
         {
-            // Log user given name change
-            await _auditContext.LogAsync("Lighthouse Notes",
-                new
-                {
-                    Action =
-                        $"User given name was updated from `{user.GivenName}` to `{updatedUser.GivenName}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUserNameJob}`.",
-                    UserID = requestingUserId, OrganizationID = organizationId
-                });
+            // If the user is updating themselves display a slightly different log message 
+            if (updateThemselves)
+                // Log user given name change
+                await _auditContext.LogAsync("Lighthouse Notes",
+                    new
+                    {
+                        Action =
+                            $"`{user.DisplayName} ({user.JobTitle})` updated their given name from `{user.GivenName}` to `{updatedUser.GivenName}`.",
+                        UserID = requestingUserId, OrganizationID = organizationId
+                    });
+            else
+                // Log user given name change
+                await _auditContext.LogAsync("Lighthouse Notes",
+                    new
+                    {
+                        Action =
+                            $"User given name was updated from `{user.GivenName}` to `{updatedUser.GivenName}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUserNameJob}`.",
+                        UserID = requestingUserId, OrganizationID = organizationId
+                    });
+
 
             user.GivenName = updatedUser.GivenName;
         }
@@ -229,14 +247,26 @@ public class UserController : ControllerBase
         // If last name is provided updated it
         if (!string.IsNullOrWhiteSpace(updatedUser.LastName) && updatedUser.LastName != user.LastName)
         {
-            // Log user last name change
-            await _auditContext.LogAsync("Lighthouse Notes",
-                new
-                {
-                    Action =
-                        $"User last name was updated from `{user.LastName}` to `{updatedUser.LastName}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUserNameJob}`.",
-                    UserID = requestingUserId, OrganizationID = organizationId
-                });
+            // If the user is updating themselves display a slightly different log message 
+            if (updateThemselves)
+                // Log user given name change
+                await _auditContext.LogAsync("Lighthouse Notes",
+                    new
+                    {
+                        Action =
+                            $"`{user.DisplayName} ({user.JobTitle})` updated their last name from `{user.LastName}` to `{updatedUser.LastName}`.",
+                        UserID = requestingUserId, OrganizationID = organizationId
+                    });
+            else
+                // Log user last name change
+                await _auditContext.LogAsync("Lighthouse Notes",
+                    new
+                    {
+                        Action =
+                            $"User last name was updated from `{user.LastName}` to `{updatedUser.LastName}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUserNameJob}`.",
+                        UserID = requestingUserId, OrganizationID = organizationId
+                    });
+
 
             user.LastName = updatedUser.LastName;
         }
@@ -251,7 +281,7 @@ public class UserController : ControllerBase
                     new
                     {
                         Action =
-                            $"User display name was updated from `{user.DisplayName}` to `{updatedUser.DisplayName}` for the user `{updatedUser.DisplayName} ({user.JobTitle})` by `{requestingUserNameJob}`.",
+                            $"`{updatedUser.DisplayName} ({user.JobTitle})` updated their display name from `{user.DisplayName}` to `{updatedUser.DisplayName}`.",
                         UserID = requestingUserId, OrganizationID = organizationId
                     });
             else
@@ -294,7 +324,7 @@ public class UserController : ControllerBase
                     new
                     {
                         Action =
-                            $"User profile picture was updated from `{user.ProfilePicture}` to `{updatedUser.ProfilePicture}` for the user `{user.DisplayName} ({user.JobTitle})` by `{requestingUserNameJob}`.",
+                            $"`{user.DisplayName} ({user.JobTitle})` updated their profile picture from `{user.ProfilePicture}` to `{updatedUser.ProfilePicture}`.",
                         UserID = requestingUserId, OrganizationID = organizationId
                     });
 
@@ -446,7 +476,7 @@ public class UserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long requestingUserId= preflightResponse.Details .UserId;
+        long requestingUserId = preflightResponse.Details.UserId;
         string requestingUserNameJob = preflightResponse.Details.UserNameJob;
 
         // Log the user's organization ID and the user's ID
@@ -488,7 +518,7 @@ public class UserController : ControllerBase
         return NoContent();
     }
 
-      private async Task<PreflightResponse> PreflightChecks()
+    private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
         string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
@@ -509,7 +539,7 @@ public class UserController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 UserId = u.Id,
@@ -524,7 +554,7 @@ public class UserController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };

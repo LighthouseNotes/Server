@@ -1,4 +1,5 @@
 ﻿// ReSharper disable InconsistentNaming
+
 namespace Server.Controllers.Case;
 
 [ApiController]
@@ -42,7 +43,7 @@ public class CaseController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -52,7 +53,7 @@ public class CaseController : ControllerBase
 
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
-        
+
         return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
             {
@@ -109,35 +110,31 @@ public class CaseController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
-        
+
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.Users)
-                .ThenInclude(cu => cu.User)
-                    .ThenInclude(u => u.Organization)
+            .ThenInclude(cu => cu.User)
+            .ThenInclude(u => u.Organization)
             .Include(c => c.Users)
-                .ThenInclude(cu => cu.User)
-                    .ThenInclude(u => u.Roles)
+            .ThenInclude(cu => cu.User)
+            .ThenInclude(u => u.Roles)
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-        
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Return requested case details
         return new API.Case
         {
@@ -194,14 +191,14 @@ public class CaseController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
-        
+
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
@@ -210,14 +207,10 @@ public class CaseController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Update values in the database if the provided values are not null
-        if (updatedCase.Name != null  && updatedCase.Name != sCase.Name)
+        if (updatedCase.Name != null && updatedCase.Name != sCase.Name)
         {
             // Log case name change
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -263,7 +256,8 @@ public class CaseController : ControllerBase
         }
 
         // If a new SIO user is provided then remove the current SIO and update
-        if (updatedCase.SIOUserId != null && _sqids.Decode(updatedCase.SIOUserId)[0] != sCase.Users.SingleOrDefault(cu => cu.IsSIO)!.User.Id)
+        if (updatedCase.SIOUserId != null && _sqids.Decode(updatedCase.SIOUserId)[0] !=
+            sCase.Users.SingleOrDefault(cu => cu.IsSIO)!.User.Id)
         {
             // Get SIO user ID from squid 
             long rawSIOUserId = _sqids.Decode(updatedCase.SIOUserId)[0];
@@ -312,7 +306,7 @@ public class CaseController : ControllerBase
                     UserID = userId, OrganizationID = organizationId
                 });
         }
-        
+
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
 
@@ -330,7 +324,6 @@ public class CaseController : ControllerBase
     [Authorize(Roles = "sio,organization-administrator")]
     public async Task<ActionResult<API.Case>> CreateCase(API.AddCase caseAddObject)
     {
-      
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
@@ -345,7 +338,7 @@ public class CaseController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
@@ -353,7 +346,7 @@ public class CaseController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
-        
+
 
         long rawSIOUserId;
         // If no SIO is provided then the user making the request is the SIO
@@ -369,8 +362,6 @@ public class CaseController : ControllerBase
             // If the user is an SIO and is trying to create an case for another user return a HTTP 401 error
             if (!User.IsInRole("organization-administrator") && rawSIOUserId != userId)
                 return Unauthorized("As you hold an SIO role you can only create cases where you are the SIO!");
-
-          
         }
 
         // Get SIO user from the database
@@ -393,7 +384,7 @@ public class CaseController : ControllerBase
         };
 
         // Give the SIO user access to the case and make them SIO
-        sCase.Users.Add(new Database.CaseUser()
+        sCase.Users.Add(new Database.CaseUser
         {
             User = SIOUser,
             IsSIO = true
@@ -446,7 +437,7 @@ public class CaseController : ControllerBase
                         UserID = userId, OrganizationID = organizationId
                     });
             }
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -491,7 +482,7 @@ public class CaseController : ControllerBase
         };
     }
 
-      private async Task<PreflightResponse> PreflightChecks()
+    private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
         string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
@@ -512,7 +503,7 @@ public class CaseController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 UserId = u.Id,
@@ -528,7 +519,7 @@ public class CaseController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };

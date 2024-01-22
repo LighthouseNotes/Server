@@ -40,7 +40,7 @@ public class UsersSettingsController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -86,7 +86,7 @@ public class UsersSettingsController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -154,11 +154,14 @@ public class UsersSettingsController : ControllerBase
             userSettings.Locale = userSettingsObject.Locale;
         }
 
+        // Save database changes 
         await _dbContext.SaveChangesAsync();
+
+        // Return HTTP 204 No Content
         return NoContent();
     }
 
-     private async Task<PreflightResponse> PreflightChecks()
+    private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
         string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
@@ -179,7 +182,7 @@ public class UsersSettingsController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
@@ -195,7 +198,7 @@ public class UsersSettingsController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };

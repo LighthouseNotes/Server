@@ -1,6 +1,4 @@
-﻿using System.Runtime.Serialization;
-
-// ReSharper disable UnusedAutoPropertyAccessor.Global
+﻿// ReSharper disable UnusedAutoPropertyAccessor.Global
 
 namespace Server.Models.API;
 

@@ -1,4 +1,5 @@
 ﻿@page "/ExportTemplate"
+@* ReSharper disable once UnusedMember.Local *@
 @inject ILoggerFactory LoggerFactory
 
 @* Page 1 - title, overview and users *@
@@ -133,7 +134,7 @@
                 <div class="mud-expand-panel-text">
                     <div class="d-flex">
                         <div class="mud-avatar mud-avatar-medium mud-avatar-square mud-avatar-filled mud-avatar-filled-default mud-elevation-0">
-                           <img src="@contemporaneousNote.Creator.ProfilePicture" class="mud-image object-fill object-center"/>
+                           <img src="@contemporaneousNote.Creator.ProfilePicture" class="mud-image object-fill object-center" alt="User profile picture"/>
                         </div>
                         <h6 class="mud-typography mud-typography-h6">
                             @contemporaneousNote.Created

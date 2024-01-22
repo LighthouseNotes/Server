@@ -4,7 +4,7 @@ public class OrganizationSettings : Base
 {
     [Key] public int Id { get; init; }
 
-    public Organization Organization { get; set; } = null!;
+    public Organization Organization { get; init; } = null!;
     [MaxLength(2083)] public required string S3Endpoint { get; set; }
     [MaxLength(63)] public required string S3BucketName { get; set; }
     public required bool S3NetworkEncryption { get; set; } = true;

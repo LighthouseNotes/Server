@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+// ReSharper disable UnusedMember.Global
 
 namespace Server.Models.Database;
 

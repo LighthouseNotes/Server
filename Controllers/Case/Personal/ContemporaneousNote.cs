@@ -47,7 +47,7 @@ public class ContemporaneousNotesController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
-        
+
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
@@ -62,12 +62,12 @@ public class ContemporaneousNotesController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
-        
+
         // Return a list of the user's contemporaneous notes
-        return caseUser.ContemporaneousNotes.Select(cn => new API.ContemporaneousNotes()
+        return caseUser.ContemporaneousNotes.Select(cn => new API.ContemporaneousNotes
         {
             Id = _sqids.Encode(cn.Id),
             Created = TimeZoneInfo.ConvertTimeFromUtc(cn.Created, timeZone)
@@ -116,7 +116,7 @@ public class ContemporaneousNotesController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Convert note ID squid to ID 
         long rawNoteId = _sqids.Decode(noteId)[0];
 
@@ -250,7 +250,7 @@ public class ContemporaneousNotesController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Create minio client
         MinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -368,7 +368,7 @@ public class ContemporaneousNotesController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
@@ -385,7 +385,7 @@ public class ContemporaneousNotesController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };

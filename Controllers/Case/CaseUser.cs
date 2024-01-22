@@ -1,7 +1,7 @@
 ﻿namespace Server.Controllers.Case;
 
 [ApiController]
-[Route("/case/{caseId}/user")]
+[Route("/case/{caseId}/user/{userId}")]
 [AuditApi(EventTypeName = "HTTP")]
 public class CaseUserController : ControllerBase
 {
@@ -17,7 +17,7 @@ public class CaseUserController : ControllerBase
     }
 
     // POST: /case/?/user/?
-    [HttpPut("{userId}")]
+    [HttpPut]
     [Authorize(Roles = "sio, organization-administrator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
@@ -47,38 +47,35 @@ public class CaseUserController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", requestingUserId);
-        
+
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == requestingUserId))
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-
-        if (!User.IsInRole("organization-administrator") && sCase.Users.SingleOrDefault(cu => cu.IsSIO && cu.User.Id == requestingUserId) == null)
-        {
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        // If user is not in role and the user is not the SIO of the case then return HTTP 401 unauthorized
+        if (!User.IsInRole("organization-administrator") &&
+            sCase.Users.SingleOrDefault(cu => cu.IsSIO && cu.User.Id == requestingUserId) == null)
             return Unauthorized("You do not have permission to edit this case as you did not create it!");
-        }
 
+        // Get the user form the database
         Database.User? user = _dbContext.User.FirstOrDefault(u =>
             u.Id == _sqids.Decode(userId)[0] && u.Organization.Id == organizationId);
-        
-        if(user == null)
-        {
-            return NotFound($"A user with the ID `{userId}` does not exist in your organization!");
-        }
 
-        await _dbContext.CaseUser.AddAsync(new Database.CaseUser()
+        // If user is null then return HTTP 404 not found 
+        if (user == null) return NotFound($"A user with the ID `{userId}` does not exist in your organization!");
+
+        // Add user to the case
+        await _dbContext.CaseUser.AddAsync(new Database.CaseUser
         {
             Case = sCase,
-            User = user,
+            User = user
         });
 
+        // Save changes to the database
         await _dbContext.SaveChangesAsync();
 
         // Log the addition of the user to the case
@@ -89,15 +86,13 @@ public class CaseUserController : ControllerBase
                     $"`{userNameJob}` added the user: `{user.DisplayName} {user.JobTitle}` to the case: `{sCase.DisplayName}`.",
                 UserID = requestingUserId, OrganizationID = organizationId
             });
-        
-        return NoContent();
-        
-    
 
+        // Return HTTP 204 No Content 
+        return NoContent();
     }
-    
+
     // DELETE: /case/?/user/?
-    [HttpDelete("{userId}")]
+    [HttpDelete]
     [Authorize(Roles = "sio, organization-administrator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
@@ -127,7 +122,7 @@ public class CaseUserController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", requestingUserId);
-        
+
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == requestingUserId))
@@ -136,29 +131,19 @@ public class CaseUserController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-
-        if (!User.IsInRole("organization-administrator") && sCase.Users.SingleOrDefault(cu => cu.IsSIO && cu.User.Id == requestingUserId) == null)
-        {
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        if (!User.IsInRole("organization-administrator") &&
+            sCase.Users.SingleOrDefault(cu => cu.IsSIO && cu.User.Id == requestingUserId) == null)
             return Unauthorized("You do not have permission to edit this case as you did not create it!");
-        }
-        
+
         Database.CaseUser? caseUser = sCase.Users.FirstOrDefault(cu => cu.User.Id == _sqids.Decode(userId)[0]);
 
         if (caseUser == null)
-        {
             return NotFound(
                 $"The user `{userId}` does not have access to the case `{caseId}` therefore can not be removed from said case.");
-        }
 
-        if (caseUser.IsSIO)
-        {
-            return UnprocessableEntity("You can not delete the SIO from the case!");
-        }
+        if (caseUser.IsSIO) return UnprocessableEntity("You can not delete the SIO from the case!");
 
         _dbContext.CaseUser.Remove(caseUser);
 
@@ -172,12 +157,9 @@ public class CaseUserController : ControllerBase
                     $"`{userNameJob}` removed the user: `{caseUser.User.DisplayName} {caseUser.User.JobTitle}` from the case: `{sCase.DisplayName}`.",
                 UserID = requestingUserId, OrganizationID = organizationId
             });
-        
-        return Ok();
 
+        return Ok();
     }
-    
-    
 
     private async Task<PreflightResponse> PreflightChecks()
     {
@@ -200,7 +182,7 @@ public class CaseUserController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 UserId = u.Id,
@@ -215,7 +197,7 @@ public class CaseUserController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };

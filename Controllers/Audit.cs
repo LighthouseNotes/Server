@@ -1,18 +1,15 @@
 ﻿namespace Server.Controllers;
 
-
 [Route("/audit")]
 [ApiController]
-// [AuditApi(EventTypeName = "HTTP")]
+[AuditApi(EventTypeName = "HTTP")]
 public class AuditController : ControllerBase
 {
-    private readonly AuditScopeFactory _auditContext;
     private readonly DatabaseContext _dbContext;
 
     public AuditController(DatabaseContext dbContext)
     {
         _dbContext = dbContext;
-        _auditContext = new AuditScopeFactory();
     }
 
     // GET: /audit/user
@@ -37,9 +34,7 @@ public class AuditController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
-        string userNameJob = preflightResponse.Details.UserNameJob;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -47,19 +42,22 @@ public class AuditController : ControllerBase
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
 
-      
+        // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
+        // Get the user including their events
         Database.User user = await _dbContext.User.Where(u => u.Id == userId).Include(u => u.Events).SingleAsync();
-        
-        return user.Events.Where(e => e.EventType == "Lighthouse Notes").Select(x => new API.UserAudit()
+
+        // Return all events with the type "Lighthouse Notes" ordered by date in descending order 
+        return user.Events.Where(e => e.EventType == "Lighthouse Notes").Select(x => new API.UserAudit
         {
             Action = x.Data.RootElement.GetProperty("Action").GetString()!,
-            DateTime = TimeZoneInfo.ConvertTimeFromUtc(x.Data.RootElement.GetProperty("StartDate").GetDateTime(), timeZone)
+            DateTime = TimeZoneInfo.ConvertTimeFromUtc(x.Data.RootElement.GetProperty("StartDate").GetDateTime(),
+                timeZone)
         }).OrderByDescending(e => e.DateTime).ToList();
     }
 
-      private async Task<PreflightResponse> PreflightChecks()
+    private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
         string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
@@ -80,12 +78,10 @@ public class AuditController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
-                OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
                 UserSettings = u.Settings
             }).SingleOrDefaultAsync();
 
@@ -97,7 +93,7 @@ public class AuditController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };
@@ -106,16 +102,13 @@ public class AuditController : ControllerBase
     private class PreflightResponse
     {
         public ObjectResult? Error { get; init; }
-        public PreflightResponseDetails? Details { get; set; }
+        public PreflightResponseDetails? Details { get; init; }
     }
 
     private class PreflightResponseDetails
     {
         public required string OrganizationId { get; init; }
-        public required Database.OrganizationSettings OrganizationSettings { get; init; }
         public long UserId { get; init; }
-        public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }
-
 }

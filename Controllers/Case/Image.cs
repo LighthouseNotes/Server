@@ -21,7 +21,7 @@ public class ImageController : ControllerBase
         _auditContext = new AuditScopeFactory();
         _sqids = sqids;
     }
-    
+
     // GET: /case/?/?/image/100.jpg
     [HttpGet("{type}/image/{fileName}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -32,7 +32,6 @@ public class ImageController : ControllerBase
     [Authorize(Roles = "user")]
     public async Task<ActionResult<string>> GetImage(string caseId, string type, string fileName)
     {
-        
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
@@ -48,7 +47,7 @@ public class ImageController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long rawUserId = preflightResponse.Details .UserId;
+        long rawUserId = preflightResponse.Details.UserId;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -62,12 +61,8 @@ public class ImageController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case user does not exist then return a HTTP 404 error 
-        if (caseUser == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-        
+        if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Create minio client
         MinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -77,15 +72,15 @@ public class ImageController : ControllerBase
 
         // Convert user ID to squid 
         string userId = _sqids.Encode(rawUserId);
-        
+
         // Create a variable for object path with auth0| removed 
         string objectPath;
-        
+
         // Change object path based on type
         switch (type)
         {
             case "contemporaneous-note":
-                objectPath = $"cases/{caseId}/{userId }/contemporaneous-notes/images/{fileName}";
+                objectPath = $"cases/{caseId}/{userId}/contemporaneous-notes/images/{fileName}";
                 break;
             case "tab":
                 objectPath = $"cases/{caseId}/{userId}/tabs/images/{fileName}";
@@ -93,7 +88,7 @@ public class ImageController : ControllerBase
             default:
                 return BadRequest("Invalid type, must be `contemporaneous-note` or `tab`!");
         }
-        
+
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
             .WithBucket(organizationSettings.S3BucketName)
@@ -105,7 +100,7 @@ public class ImageController : ControllerBase
 
         // Create variable to store object metadata
         ObjectStat objectMetadata;
-        
+
         // Fetch object metadata
         try
         {
@@ -148,7 +143,7 @@ public class ImageController : ControllerBase
         // Generate MD5 and SHA256 hash
         byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
         byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-        
+
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
             return Problem($"MD5 hash verification failed for: `{objectPath}`!");
@@ -156,7 +151,7 @@ public class ImageController : ControllerBase
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
             return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-        
+
         // Fetch presigned url for object  
         string url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
             .WithBucket(organizationSettings.S3BucketName)
@@ -193,7 +188,7 @@ public class ImageController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long rawUserId = preflightResponse.Details .UserId;
+        long rawUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
 
         // Log the user's organization ID and the user's ID
@@ -209,16 +204,12 @@ public class ImageController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case user does not exist then return a HTTP 404 error 
-        if (caseUser == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-        
+        if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Get file size
         long size = uploadFiles.Sum(f => f.Length);
 
-        
+
         // Create minio client
         MinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -234,23 +225,23 @@ public class ImageController : ControllerBase
         // If bucket does not exist return HTTP 500 error
         if (!bucketExists)
             return Problem($"An S3 Bucket with the name `{organizationSettings.S3BucketName}` does not exist!");
-        
+
         // Convert user ID to squid 
         string userId = _sqids.Encode(rawUserId);
-        
+
         // Response
         bool success = true;
         List<string> problemFileNames = new();
-        
+
         // Loop through each file
         foreach (IFormFile file in uploadFiles)
         {
             // Create variable for file name
             string fileName = ContentDispositionHeaderValue.Parse(file.ContentDisposition).FileName.Trim().ToString();
-            
+
             // Create a variable for object path with auth0| removed 
             string objectPath;
-        
+
             // Change object path based on type
             switch (type)
             {
@@ -263,10 +254,10 @@ public class ImageController : ControllerBase
                 default:
                     return BadRequest("Invalid type, must be `contemporaneous-note` or `tab`!");
             }
-            
+
             // Create variable to store object metadata
             ObjectStat objectMetadata;
-            
+
             // Try and access object if object does not exist catch exception
             try
             {
@@ -274,24 +265,25 @@ public class ImageController : ControllerBase
                     .WithBucket(organizationSettings.S3BucketName)
                     .WithObject(objectPath)
                 );
-                
+
                 // Fetch object hash from database
                 Database.Hash? objectHashes = caseUser.Hashes.SingleOrDefault(h =>
                     h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
 
                 // If object hash is null then a hash does not exist so return a HTTP 500 error
                 if (objectHashes == null)
-                    return Problem("The image you are trying to upload matches the name of an existing image, however the hash of the existing image cannot be found!");
-                
+                    return Problem(
+                        "The image you are trying to upload matches the name of an existing image, however the hash of the existing image cannot be found!");
+
                 // Create memory stream to store file contents
                 MemoryStream memoryStream = new();
 
                 // Copy file to memory stream
                 await file.CopyToAsync(memoryStream);
-                
+
                 // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
                 memoryStream.Position = 0;
-                
+
                 // Create MD5 and SHA256
                 using MD5 md5 = MD5.Create();
                 using SHA256 sha256 = SHA256.Create();
@@ -299,7 +291,7 @@ public class ImageController : ControllerBase
                 // Generate MD5 and SHA256 hash
                 byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
                 byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-        
+
                 // Check generated MD5 and SHA256 hash matches the hash in the database
                 if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash ||
                     BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
@@ -319,7 +311,7 @@ public class ImageController : ControllerBase
 
                 // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
                 memoryStream.Position = 0;
-                
+
                 // Save file to s3 bucket
                 await minio.PutObjectAsync(new PutObjectArgs()
                     .WithBucket(organizationSettings.S3BucketName)
@@ -328,16 +320,16 @@ public class ImageController : ControllerBase
                     .WithObjectSize(memoryStream.Length)
                     .WithContentType("application/octet-stream")
                 );
-                
+
                 // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
                 memoryStream.Position = 0;
-                
+
                 // Fetch object metadata
-               objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
+                objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
                     .WithBucket(organizationSettings.S3BucketName)
                     .WithObject(objectPath)
                 );
-                
+
                 // Create MD5 and SHA256
                 using MD5 md5 = MD5.Create();
                 using SHA256 sha256 = SHA256.Create();
@@ -367,20 +359,16 @@ public class ImageController : ControllerBase
                         UserID = rawUserId, OrganizationID = organizationId
                     });
             }
-            
         }
 
         if (success == false)
-        {
             return Conflict(
                 $"The following file names already exist; `{string.Join(",", problemFileNames)}`, please rename them and try again!");
-
-        }
 
         // Return Ok
         return Ok(new { count = uploadFiles.Count, size });
     }
-    
+
     // GET: /case/?/shared/?/image/100.jpg
     [HttpGet("shared/{type}/image/{fileName}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -406,13 +394,13 @@ public class ImageController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
-        
+
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
@@ -420,12 +408,8 @@ public class ImageController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-        
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Create minio client
         MinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -435,7 +419,7 @@ public class ImageController : ControllerBase
 
         // Create a variable for object path with auth0| removed 
         string objectPath;
-        
+
         // Change object path based on type
         switch (type)
         {
@@ -448,7 +432,7 @@ public class ImageController : ControllerBase
             default:
                 return BadRequest("Invalid type, must be `contemporaneous-note` or `tab`!");
         }
-        
+
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
             .WithBucket(organizationSettings.S3BucketName)
@@ -460,7 +444,7 @@ public class ImageController : ControllerBase
 
         // Create variable to store object metadata
         ObjectStat objectMetadata;
-        
+
         // Fetch object metadata
         try
         {
@@ -474,7 +458,7 @@ public class ImageController : ControllerBase
         {
             return NotFound($"A object with the path `{objectPath}` can not be found in the S3 Bucket!");
         }
-    
+
 
         // Fetch object hash from database
         Database.SharedHash? objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
@@ -504,7 +488,7 @@ public class ImageController : ControllerBase
         // Generate MD5 and SHA256 hash
         byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
         byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-        
+
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
             return Problem($"MD5 hash verification failed for: `{objectPath}`!");
@@ -512,7 +496,7 @@ public class ImageController : ControllerBase
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
             return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-        
+
         // Fetch presigned url for object  
         string url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
             .WithBucket(organizationSettings.S3BucketName)
@@ -549,14 +533,14 @@ public class ImageController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
-        
+
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
@@ -564,12 +548,8 @@ public class ImageController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-        
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Get file size
         long size = uploadFiles.Sum(f => f.Length);
 
@@ -588,7 +568,7 @@ public class ImageController : ControllerBase
         // If bucket does not exist return HTTP 500 error
         if (!bucketExists)
             return Problem($"An S3 Bucket with the name `{organizationSettings.S3BucketName}` does not exist!");
-        
+
         // Response
         bool success = true;
         List<string> problemFileNames = new();
@@ -597,10 +577,10 @@ public class ImageController : ControllerBase
         {
             // Create variable for file name
             string fileName = ContentDispositionHeaderValue.Parse(file.ContentDisposition).FileName.Trim().ToString();
-            
+
             // Create a variable for object path with auth0| removed 
             string objectPath;
-        
+
             // Change object path based on type
             switch (type)
             {
@@ -613,10 +593,10 @@ public class ImageController : ControllerBase
                 default:
                     return BadRequest("Invalid type, must be `contemporaneous-note` or `tab`!");
             }
-            
+
             // Create variable to store object metadata
             ObjectStat objectMetadata;
-            
+
             // Try and access object if object does not exist catch exception
             try
             {
@@ -624,24 +604,25 @@ public class ImageController : ControllerBase
                     .WithBucket(organizationSettings.S3BucketName)
                     .WithObject(objectPath)
                 );
-                
+
                 // Fetch object hash from database
                 Database.SharedHash? objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
                     h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
 
                 // If object hash is null then a hash does not exist so return a HTTP 500 error
                 if (objectHashes == null)
-                    return Problem("The image you are trying to upload matches the name of an existing image, however the hash of the existing image cannot be found!");
-                
+                    return Problem(
+                        "The image you are trying to upload matches the name of an existing image, however the hash of the existing image cannot be found!");
+
                 // Create memory stream to store file contents
                 MemoryStream memoryStream = new();
 
                 // Copy file to memory stream
                 await file.CopyToAsync(memoryStream);
-                
+
                 // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
                 memoryStream.Position = 0;
-                
+
                 // Create MD5 and SHA256
                 using MD5 md5 = MD5.Create();
                 using SHA256 sha256 = SHA256.Create();
@@ -649,7 +630,7 @@ public class ImageController : ControllerBase
                 // Generate MD5 and SHA256 hash
                 byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
                 byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-        
+
                 // Check generated MD5 and SHA256 hash matches the hash in the database
                 if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash ||
                     BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
@@ -669,7 +650,7 @@ public class ImageController : ControllerBase
 
                 // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
                 memoryStream.Position = 0;
-                
+
                 // Save file to s3 bucket
                 await minio.PutObjectAsync(new PutObjectArgs()
                     .WithBucket(organizationSettings.S3BucketName)
@@ -678,16 +659,16 @@ public class ImageController : ControllerBase
                     .WithObjectSize(memoryStream.Length)
                     .WithContentType("application/octet-stream")
                 );
-                
+
                 // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
                 memoryStream.Position = 0;
-                
+
                 // Fetch object metadata
-               objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
+                objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
                     .WithBucket(organizationSettings.S3BucketName)
                     .WithObject(objectPath)
                 );
-                
+
                 // Create MD5 and SHA256
                 using MD5 md5 = MD5.Create();
                 using SHA256 sha256 = SHA256.Create();
@@ -717,21 +698,17 @@ public class ImageController : ControllerBase
                         UserID = userId, OrganizationID = organizationId
                     });
             }
-            
         }
 
         if (success == false)
-        {
             return Conflict(
                 $"The following file names already exist; `{string.Join(",", problemFileNames)}`, please rename them and try again!");
-
-        }
 
         // Return Ok
         return Ok(new { count = uploadFiles.Count, size });
     }
 
-      private async Task<PreflightResponse> PreflightChecks()
+    private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
         string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
@@ -752,7 +729,7 @@ public class ImageController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
@@ -768,7 +745,7 @@ public class ImageController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };
@@ -787,6 +764,4 @@ public class ImageController : ControllerBase
         public long UserId { get; init; }
         public required string UserNameJob { get; init; }
     }
-
-  
 }

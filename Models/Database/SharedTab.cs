@@ -6,6 +6,6 @@ public class SharedTab : Base
 
     [MaxLength(50)] public required string Name { get; init; }
 
-    public User Creator { get; set; } = null!;
-    public Case Case { get; set; } = null!;
+    public User Creator { get; init; } = null!;
+    public Case Case { get; init; } = null!;
 }

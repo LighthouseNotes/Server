@@ -45,7 +45,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -57,29 +57,26 @@ public class SharedContemporaneousNotesController : ControllerBase
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.SharedContemporaneousNotes)
-                .ThenInclude(scn => scn.Creator)
-                    .ThenInclude(u => u.Roles)
+            .ThenInclude(scn => scn.Creator)
+            .ThenInclude(u => u.Roles)
             .Include(c => c.SharedContemporaneousNotes)
             .ThenInclude(scn => scn.Creator)
-                .ThenInclude(u => u.Organization)
+            .ThenInclude(u => u.Organization)
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
-        
+
         // Return a list of the user's contemporaneous notes
-        return sCase.SharedContemporaneousNotes.Select(cn => new API.SharedContemporaneousNotes()
+        return sCase.SharedContemporaneousNotes.Select(cn => new API.SharedContemporaneousNotes
         {
             Id = _sqids.Encode(cn.Id),
             Created = TimeZoneInfo.ConvertTimeFromUtc(cn.Created, timeZone),
-            Creator = new API.User()
+            Creator = new API.User
             {
                 Id = _sqids.Encode(cn.Creator.Id),
                 DisplayName = cn.Creator.DisplayName,
@@ -89,7 +86,7 @@ public class SharedContemporaneousNotesController : ControllerBase
                 JobTitle = cn.Creator.JobTitle,
                 ProfilePicture = cn.Creator.ProfilePicture,
                 Roles = cn.Creator.Roles.Select(r => r.Name).ToList(),
-                Organization = new API.Organization()
+                Organization = new API.Organization
                 {
                     DisplayName = cn.Creator.Organization.DisplayName,
                     Name = cn.Creator.Organization.Name
@@ -123,8 +120,8 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
-        
+        long userId = preflightResponse.Details.UserId;
+
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
@@ -138,17 +135,14 @@ public class SharedContemporaneousNotesController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         
         // Convert Note ID squid to ID
         long rawNoteId = _sqids.Decode(noteId)[0];
 
         // Fetch the contemporaneous note from the database
-        Database.SharedContemporaneousNote?  contemporaneousNote =
+        Database.SharedContemporaneousNote? contemporaneousNote =
             sCase.SharedContemporaneousNotes.SingleOrDefault(cn => cn.Id == rawNoteId);
 
         // If contemporaneous note is null then return a HTTP 404 error as it does not exist
@@ -212,7 +206,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
         memoryStream.Position = 0;
-        
+
         // Create MD5 and SHA256
         using MD5 md5 = MD5.Create();
         using SHA256 sha256 = SHA256.Create();
@@ -220,7 +214,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Generate MD5 and SHA256 hash
         byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
         byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-        
+
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
             return Problem($"MD5 hash verification failed for: `{objectPath}`!");
@@ -228,7 +222,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
             return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-        
+
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
     }
@@ -258,7 +252,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
 
         // Log the user's organization ID and the user's ID
@@ -274,12 +268,9 @@ public class SharedContemporaneousNotesController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        
         // Create minio client
         MinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -288,14 +279,14 @@ public class SharedContemporaneousNotesController : ControllerBase
             .Build();
 
         // Fetch the creator user from the database 
-        Database.User user =  await _dbContext.User.SingleAsync(u=> u.Id == userId);
-        
+        Database.User user = await _dbContext.User.SingleAsync(u => u.Id == userId);
+
         // Create contemporaneous note record in the database
         Database.SharedContemporaneousNote contemporaneousNote = new()
         {
             Creator = user
         };
-        
+
         // Add the note to the collection
         sCase.SharedContemporaneousNotes.Add(contemporaneousNote);
 
@@ -324,7 +315,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
-            
+
             // Save file to s3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
                 .WithBucket(organizationSettings.S3BucketName)
@@ -333,7 +324,7 @@ public class SharedContemporaneousNotesController : ControllerBase
                 .WithObjectSize(memoryStream.Length)
                 .WithContentType("application/octet-stream")
             );
-            
+
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
 
@@ -342,7 +333,7 @@ public class SharedContemporaneousNotesController : ControllerBase
                 .WithBucket(organizationSettings.S3BucketName)
                 .WithObject(objectPath)
             );
-            
+
             // Create MD5 and SHA256
             using MD5 md5 = MD5.Create();
             using SHA256 sha256 = SHA256.Create();
@@ -381,7 +372,8 @@ public class SharedContemporaneousNotesController : ControllerBase
                 $"An unknown error occured while adding a contemporaneous note. For more information see the following error message: `{e.Message}`");
         }
     }
-      private async Task<PreflightResponse> PreflightChecks()
+
+    private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
         string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
@@ -402,7 +394,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
@@ -419,7 +411,7 @@ public class SharedContemporaneousNotesController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };

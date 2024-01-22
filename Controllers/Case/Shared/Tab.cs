@@ -57,30 +57,27 @@ public class SharedTabsController : ControllerBase
         Database.Case? sCase = await _dbContext.Case
             .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.SharedTabs)
-                .ThenInclude(st => st.Creator)
-                    .ThenInclude(u => u.Roles)
+            .ThenInclude(st => st.Creator)
+            .ThenInclude(u => u.Roles)
             .Include(c => c.SharedTabs)
-                .ThenInclude(st => st.Creator)
-                    .ThenInclude(u => u.Organization)
+            .ThenInclude(st => st.Creator)
+            .ThenInclude(u => u.Organization)
             .SingleOrDefaultAsync();
-        
+
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-            
-        }
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
-        
+
         // Return a list of the user's tabs
         return sCase.SharedTabs.Select(t => new API.SharedTab
         {
             Id = _sqids.Encode(t.Id),
             Name = t.Name,
             Created = TimeZoneInfo.ConvertTimeFromUtc(t.Created, timeZone),
-            Creator = new API.User()
+            Creator = new API.User
             {
                 Id = _sqids.Encode(t.Creator.Id),
                 DisplayName = t.Creator.DisplayName,
@@ -90,7 +87,7 @@ public class SharedTabsController : ControllerBase
                 JobTitle = t.Creator.JobTitle,
                 ProfilePicture = t.Creator.ProfilePicture,
                 Roles = t.Creator.Roles.Select(r => r.Name).ToList(),
-                Organization = new API.Organization()
+                Organization = new API.Organization
                 {
                     DisplayName = t.Creator.Organization.DisplayName,
                     Name = t.Creator.Organization.Name
@@ -123,7 +120,7 @@ public class SharedTabsController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -137,50 +134,47 @@ public class SharedTabsController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         
         // Fetch tab from the database
         Database.SharedTab? tab = await _dbContext.SharedTab
             .Where(st => st.Id == _sqids.Decode(tabId)[0] && st.Case == sCase)
             .Include(st => st.Creator)
-                .ThenInclude(u => u.Organization)
+            .ThenInclude(u => u.Organization)
             .Include(st => st.Creator)
-                .ThenInclude(u => u.Roles)
+            .ThenInclude(u => u.Roles)
             .SingleOrDefaultAsync();
-            
+
         // If tab is null then return a HTTP 404 error as it does not exist
         if (tab == null)
             return NotFound($"The shared tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
         // Return tab details
         return new API.SharedTab
         {
-            Id = _sqids.Encode( tab.Id),
+            Id = _sqids.Encode(tab.Id),
             Name = tab.Name,
-            Created =  TimeZoneInfo.ConvertTimeFromUtc(tab.Created, timeZone),
-            Creator = new API.User()
+            Created = TimeZoneInfo.ConvertTimeFromUtc(tab.Created, timeZone),
+            Creator = new API.User
             {
-            Id = _sqids.Encode(tab.Creator.Id),
-            DisplayName = tab.Creator.DisplayName,
-            EmailAddress = tab.Creator.EmailAddress,
-            GivenName = tab.Creator.GivenName,
-            LastName = tab.Creator.LastName,
-            JobTitle = tab.Creator.JobTitle,
-            ProfilePicture = tab.Creator.ProfilePicture,
-            Roles = tab.Creator.Roles.Select(r => r.Name).ToList(),
-            Organization = new API.Organization()
-            {
-                DisplayName = tab.Creator.Organization.DisplayName,
-                Name = tab.Creator.Organization.Name
+                Id = _sqids.Encode(tab.Creator.Id),
+                DisplayName = tab.Creator.DisplayName,
+                EmailAddress = tab.Creator.EmailAddress,
+                GivenName = tab.Creator.GivenName,
+                LastName = tab.Creator.LastName,
+                JobTitle = tab.Creator.JobTitle,
+                ProfilePicture = tab.Creator.ProfilePicture,
+                Roles = tab.Creator.Roles.Select(r => r.Name).ToList(),
+                Organization = new API.Organization
+                {
+                    DisplayName = tab.Creator.Organization.DisplayName,
+                    Name = tab.Creator.Organization.Name
+                }
             }
-        }
         };
     }
 
@@ -208,7 +202,7 @@ public class SharedTabsController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
@@ -224,18 +218,15 @@ public class SharedTabsController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        
         // Fetch the creator user from the database 
-        Database.User user =  await _dbContext.User
+        Database.User user = await _dbContext.User
             .Include(user => user.Roles)
             .Include(user => user.Organization)
-            .SingleAsync(u=> u.Id == userId);
-        
+            .SingleAsync(u => u.Id == userId);
+
         // Create tab model
         Database.SharedTab tabModel = new()
         {
@@ -248,7 +239,7 @@ public class SharedTabsController : ControllerBase
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
-        
+
         // Log creation of the tab
         await _auditContext.LogAsync("Lighthouse Notes",
             new
@@ -257,17 +248,17 @@ public class SharedTabsController : ControllerBase
                     $"`{userNameJob}` created the shared tab `{tabModel.Name}` for `{sCase.DisplayName}`.",
                 UserID = userId, OrganizationID = organizationId
             });
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
         // Return the newly created tab details
         return CreatedAtAction(nameof(GetTabs), new { caseId }, new API.SharedTab
         {
-            Id = _sqids.Encode(tabModel.Id), 
-            Name = tabModel.Name, 
-            Created =  TimeZoneInfo.ConvertTimeFromUtc(tabModel.Created, timeZone),
-            Creator = new API.User()
+            Id = _sqids.Encode(tabModel.Id),
+            Name = tabModel.Name,
+            Created = TimeZoneInfo.ConvertTimeFromUtc(tabModel.Created, timeZone),
+            Creator = new API.User
             {
                 Id = _sqids.Encode(tabModel.Creator.Id),
                 DisplayName = tabModel.Creator.DisplayName,
@@ -277,7 +268,7 @@ public class SharedTabsController : ControllerBase
                 JobTitle = tabModel.Creator.JobTitle,
                 ProfilePicture = tabModel.Creator.ProfilePicture,
                 Roles = tabModel.Creator.Roles.Select(r => r.Name).ToList(),
-                Organization = new API.Organization()
+                Organization = new API.Organization
                 {
                     DisplayName = tabModel.Creator.Organization.DisplayName,
                     Name = tabModel.Creator.Organization.Name
@@ -311,7 +302,7 @@ public class SharedTabsController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -326,12 +317,9 @@ public class SharedTabsController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        
         // Fetch the tab from the database
         Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == _sqids.Decode(tabId)[0]);
 
@@ -442,7 +430,7 @@ public class SharedTabsController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
 
         // Log the user's organization ID and the user's ID
@@ -458,11 +446,9 @@ public class SharedTabsController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        
         // Fetch tab from the database
         Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == _sqids.Decode(tabId)[0]);
 
@@ -624,7 +610,7 @@ public class SharedTabsController : ControllerBase
                 $"An unknown error occured while adding to or creating the shared tab. For more information see the following error message: `{e.Message}`");
         }
     }
-    
+
     private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
@@ -646,7 +632,7 @@ public class SharedTabsController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
@@ -663,7 +649,7 @@ public class SharedTabsController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };
@@ -683,5 +669,4 @@ public class SharedTabsController : ControllerBase
         public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }
-     
 }

@@ -39,7 +39,7 @@ public class ExhibitController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -54,14 +54,12 @@ public class ExhibitController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
-        
+
+        // Return the cases exhibits 
         return sCase.Exhibits.Select(e => new API.Exhibit
         {
             Id = _sqids.Encode(e.Id),
@@ -73,7 +71,7 @@ public class ExhibitController : ControllerBase
         }).ToList();
     }
 
-    // GET: /case/5/exhibit/5
+    // GET: /case/?/exhibit/?
     [HttpGet("exhibit/{exhibitId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
@@ -96,7 +94,7 @@ public class ExhibitController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -111,21 +109,19 @@ public class ExhibitController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
         // Fetch exhibit from the database
         Database.Exhibit? exhibit = sCase.Exhibits.SingleOrDefault(e => e.Id == _sqids.Decode(exhibitId)[0]);
 
         // If exhibit is null return HTTP 404 error
         if (exhibit == null)
             return NotFound($"A exhibit with the ID `{exhibitId}` was not found in the case with the ID `{caseId}`!");
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
-        
+
+        // Return the exhibit details
         return new API.Exhibit
         {
             Id = _sqids.Encode(exhibit.Id),
@@ -137,7 +133,7 @@ public class ExhibitController : ControllerBase
         };
     }
 
-    // POST: /case/5/exhibit
+    // POST: /case/?/exhibit
     [HttpPost("exhibit")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
@@ -160,7 +156,7 @@ public class ExhibitController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details .UserId;
+        long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
@@ -172,6 +168,7 @@ public class ExhibitController : ControllerBase
         // As datetime are provided in UTC, make sure kind is set to UTC so stored in the database as UTC
         exhibit.DateTimeSeizedProduced = DateTime.SpecifyKind(exhibit.DateTimeSeizedProduced, DateTimeKind.Utc);
 
+        // Create the exhibit entity
         Database.Exhibit newExhibit = new()
         {
             Reference = exhibit.Reference,
@@ -188,17 +185,14 @@ public class ExhibitController : ControllerBase
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
-        if (sCase == null)
-        {
-            return NotFound($"The case `{caseId}` does not exist!"); 
-            // The case might not exist or the user does not have access to the case
-        }
-        
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        // Add the exhibit to the case
         sCase.Exhibits.Add(newExhibit);
-        
+
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
-        
+
         // Log the creation of a exhibit
         await _auditContext.LogAsync("Lighthouse Notes",
             new
@@ -207,10 +201,11 @@ public class ExhibitController : ControllerBase
                     $"`{userNameJob}` created the exhibit: `{newExhibit.Reference}` in the case: `{sCase.DisplayName}`.",
                 UserID = userId, OrganizationID = organizationId
             });
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
+        // Create the exhibit details response 
         API.Exhibit createdExhibit = new()
         {
             Id = _sqids.Encode(newExhibit.Id),
@@ -218,13 +213,14 @@ public class ExhibitController : ControllerBase
             Description = newExhibit.Description,
             DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(newExhibit.DateTimeSeizedProduced, timeZone),
             WhereSeizedProduced = newExhibit.WhereSeizedProduced,
-            SeizedBy = newExhibit.SeizedBy,
+            SeizedBy = newExhibit.SeizedBy
         };
 
+        // Return the newly created exhibit
         return CreatedAtAction(nameof(GetExhibit),
             new { caseId, exhibitId = newExhibit.Id }, createdExhibit);
     }
-    
+
     private async Task<PreflightResponse> PreflightChecks()
     {
         // Get user ID from claim
@@ -246,7 +242,7 @@ public class ExhibitController : ControllerBase
         // Select organization ID, organization settings, user ID and user name and job and settings from the user table
         PreflightResponseDetails? userQueryResult = await _dbContext.User
             .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails()
+            .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
                 UserId = u.Id,
@@ -262,7 +258,7 @@ public class ExhibitController : ControllerBase
                     $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        return new PreflightResponse()
+        return new PreflightResponse
         {
             Details = userQueryResult
         };
