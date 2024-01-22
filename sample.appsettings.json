@@ -1,0 +1,25 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.Hosting.Lifetime": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "Urls": "http://localhost:6000",
+  "Auth0": {
+    "Domain": "example.auth0.com",
+    "Audience": "https://api.example.com"
+  },
+  "ConnectionStrings": {
+    "DatabaseContext": "Host=localhost; Database=lighthousenotes; Username=example; Password=Example!2"
+  },
+  "Sqids": {
+    "Alphabet": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    "MinLength": 10
+  },
+  "Syncfusion": {
+    "LicenseKey": "License"
+  }
+}
