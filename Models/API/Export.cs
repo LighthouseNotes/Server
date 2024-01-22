@@ -10,12 +10,22 @@ public class Export
     public required ICollection<User> Users { get; init; }
     public List<ContemporaneousNotesExport> ContemporaneousNotes { get; set; } = new();
     public List<TabExport> Tabs { get; set; } = new();
+    
+    public List<SharedContemporaneousNotesExport> SharedContemporaneousNotes { get; set; } = new();
+    public List<SharedTabExport> SharedTabs { get; set; } = new();
 }
 
 public class ContemporaneousNotesExport
 {
     public required string Content { get; set; }
     public DateTime DateTime { get; set; }
+}
+
+public class SharedContemporaneousNotesExport
+{
+    public required string Content { get; set; }
+    public DateTime Created { get; set; }
+    public required User Creator { get; set; }
 }
 
 public class TabExport
@@ -28,4 +38,6 @@ public class SharedTabExport
 {
     public required string Name { get; set; }
     public required string Content { get; set; }
+    public required DateTime Created { get; set; }
+    public required User Creator { get; set; }
 }
