@@ -26,7 +26,6 @@
     <PackageReference Include="Sqids" Version="3.1.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
     <PackageReference Include="Syncfusion.HtmlToPdfConverter.Net.Windows" Version="24.1.41" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
   </ItemGroup>
 
   <ItemGroup>
