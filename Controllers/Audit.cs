@@ -1,4 +1,4 @@
-﻿namespace LighthouseNotesServer.Controllers;
+﻿namespace Server.Controllers;
 
 
 [Route("/audit")]
@@ -24,77 +24,98 @@ public class AuditController : ControllerBase
     [Authorize(Roles = "user")]
     public async Task<ActionResult<IEnumerable<API.UserAudit>>> SimpleAudit()
     {
-        // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned an error return it here
+        // If preflight checks returned a HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If organization or case are null return HTTP 500 error
-        if (preflightResponse.Organization == null || preflightResponse.User == null)
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        Database.Organization organization = preflightResponse.Organization;
-        Database.User requestingUser = preflightResponse.User;
+        string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
+        long userId = preflightResponse.Details .UserId;
+        string userNameJob = preflightResponse.Details.UserNameJob;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById(requestingUser.Settings.TimeZone);
-        string DateTimeFormat = requestingUser.Settings.DateFormat + " " + requestingUser.Settings.DateFormat;
-        return requestingUser.Events.Where(e => e.EventType == "Lighthouse Notes").Select(x => new API.UserAudit()
+        // Log the user's organization ID and the user's ID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
+
+      
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
+
+        Database.User user = await _dbContext.User.Where(u => u.Id == userId).Include(u => u.Events).SingleAsync();
+        
+        return user.Events.Where(e => e.EventType == "Lighthouse Notes").Select(x => new API.UserAudit()
         {
-            Action = x.Data.RootElement.GetProperty("Action").GetString(),
-            DateTime = TimeZoneInfo.ConvertTimeFromUtc(x.Data.RootElement.GetProperty("StartDate").GetDateTime(), zone)
-        }).ToList();
+            Action = x.Data.RootElement.GetProperty("Action").GetString()!,
+            DateTime = TimeZoneInfo.ConvertTimeFromUtc(x.Data.RootElement.GetProperty("StartDate").GetDateTime(), timeZone)
+        }).OrderByDescending(e => e.DateTime).ToList();
     }
 
-    private async Task<PreflightResponse> PreflightChecks()
+      private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user id from claim
-        string? userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user ID from claim
+        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-        // If user id is null then it does not exist in JWT so return a HTTP 400 error
-        if (userId == null)
+        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
+        if (auth0UserId == null)
             return new PreflightResponse
                 { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Get organization id from claim
+        // Get organization ID from claim
         string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
 
-        // If organization id  is null then it does not exist in JWT so return a HTTP 400 error
+        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
         if (organizationId == null)
             return new PreflightResponse
                 { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
 
-        // Fetch organization from the database by primary key
-        Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
+        PreflightResponseDetails? userQueryResult = await _dbContext.User
+            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+            .Select(u => new PreflightResponseDetails()
+            {
+                OrganizationId = u.Organization.Id,
+                OrganizationSettings = u.Organization.Settings,
+                UserId = u.Id,
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
+                UserSettings = u.Settings
+            }).SingleOrDefaultAsync();
 
-        // If organization is null then it does not exist so return a HTTP 404 error
-        if (organization == null)
-            return new PreflightResponse
-                { Error = NotFound($"A organization with the ID `{organizationId}` can not be found!") };
-
-        // If user does not exist in organization return a HTTP 403 error
-        if (organization.Users.All(u => u.Id != userId))
+        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
+        if (userQueryResult == null)
             return new PreflightResponse
             {
-                Error = Unauthorized(
-                    $"A user with the ID `{userId}` was not found in the organization with the ID `{organizationId}`!")
+                Error = NotFound(
+                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
             };
 
-        // Fetch user from database
-        Database.User user = organization.Users.Single(u => u.Id == userId);
-
-        // Return organization, user and case entity 
-        return new PreflightResponse { Organization = organization, User = user };
+        return new PreflightResponse()
+        {
+            Details = userQueryResult
+        };
     }
-
 
     private class PreflightResponse
     {
         public ObjectResult? Error { get; init; }
-        public Database.Organization? Organization { get; init; }
-        public Database.User? User { get; init; }
+        public PreflightResponseDetails? Details { get; set; }
     }
+
+    private class PreflightResponseDetails
+    {
+        public required string OrganizationId { get; init; }
+        public required Database.OrganizationSettings OrganizationSettings { get; init; }
+        public long UserId { get; init; }
+        public required string UserNameJob { get; init; }
+        public required Database.UserSettings UserSettings { get; init; }
+    }
+
 }
