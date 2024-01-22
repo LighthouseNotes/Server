@@ -29,5 +29,4 @@ public class UpdateCase
     public string? Name { get; set; } = null;
     public string? SIOUserId { get; set; } = null;
     public string? Status { get; set; } = null;
-    public List<string>? UserIds { get; set; } = null;
 }
