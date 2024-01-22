@@ -6,6 +6,7 @@
 	<GenerateDocumentationFile>true</GenerateDocumentationFile>
 	<NoWarn>$(NoWarn);1591</NoWarn>
 	<Nullable>enable</Nullable>
+    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -52,14 +53,15 @@
     <None Remove="Properties\serviceDependencies.json" />
     <None Remove="Properties\serviceDependencies.local.json" />
   </ItemGroup>
-
-  <ItemGroup>
-    <_ContentIncludedByDefault Remove="Controllers\Case\ExportTemplate.razor" />
-  </ItemGroup>
   
   <ItemGroup>
     <None Remove="Properties\serviceDependencies.json" />
     <None Remove="Properties\serviceDependencies.local.json" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="test\appsettings.Development.json" />
+    <_ContentIncludedByDefault Remove="test\appsettings.json" />
   </ItemGroup>
 
 </Project>
