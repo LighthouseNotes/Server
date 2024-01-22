@@ -713,7 +713,7 @@ public class ImageController : ControllerBase
                     new
                     {
                         Action =
-                            $"`{userNameJob}` uploaded an image to a {type} for case `{sCase.DisplayName}` with name `{fileName}`.",
+                            $"`{userNameJob}` uploaded an image to a shared {type} for case `{sCase.DisplayName}` with name `{fileName}`.",
                         UserID = userId, OrganizationID = organizationId
                     });
             }
@@ -757,7 +757,7 @@ public class ImageController : ControllerBase
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} {u.JobTitle}"
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})"
             }).SingleOrDefaultAsync();
 
         // If query result is null then the user does not exit in the organization so return a HTTP 404 error
