@@ -513,7 +513,7 @@ public class UserController : ControllerBase
             {
                 OrganizationId = u.Organization.Id,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} {u.JobTitle}"
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})"
             }).SingleOrDefaultAsync();
 
         // If query result is null then the user does not exit in the organization so return a HTTP 404 error

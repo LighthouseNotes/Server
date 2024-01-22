@@ -368,7 +368,7 @@ public class SharedContemporaneousNotesController : ControllerBase
                 new
                 {
                     Action =
-                        $"`{userNameJob}` created contemporaneous note for `{sCase.DisplayName}` with the ID `{contemporaneousNote.Id}`.",
+                        $"`{userNameJob}` created a shared contemporaneous note for `{sCase.DisplayName}` with the ID `{_sqids.Encode(contemporaneousNote.Id)}`.",
                     UserID = userId, OrganizationID = organizationId
                 });
 
@@ -407,7 +407,7 @@ public class SharedContemporaneousNotesController : ControllerBase
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} {u.JobTitle}",
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
                 UserSettings = u.Settings
             }).SingleOrDefaultAsync();
 

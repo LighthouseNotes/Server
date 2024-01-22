@@ -254,7 +254,7 @@ public class SharedTabsController : ControllerBase
             new
             {
                 Action =
-                    $"`{userNameJob}` created the tab `{tabModel.Name}` for `{sCase.DisplayName}`.",
+                    $"`{userNameJob}` created the shared tab `{tabModel.Name}` for `{sCase.DisplayName}`.",
                 UserID = userId, OrganizationID = organizationId
             });
         
@@ -651,7 +651,7 @@ public class SharedTabsController : ControllerBase
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} {u.JobTitle}",
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
                 UserSettings = u.Settings
             }).SingleOrDefaultAsync();
 

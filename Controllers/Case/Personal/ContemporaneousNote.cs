@@ -373,7 +373,7 @@ public class ContemporaneousNotesController : ControllerBase
                 OrganizationId = u.Organization.Id,
                 OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} {u.JobTitle}",
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
                 UserSettings = u.Settings
             }).SingleOrDefaultAsync();
 

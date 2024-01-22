@@ -250,7 +250,7 @@ public class ExhibitController : ControllerBase
             {
                 OrganizationId = u.Organization.Id,
                 UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} {u.JobTitle}",
+                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
                 UserSettings = u.Settings
             }).SingleOrDefaultAsync();
 
