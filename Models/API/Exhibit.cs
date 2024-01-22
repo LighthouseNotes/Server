@@ -12,7 +12,6 @@ public class Exhibit
     public required DateTime DateTimeSeizedProduced { get; init; }
     public required string WhereSeizedProduced { get; init; }
     public required string SeizedBy { get; init; }
-    public required ICollection<User> Users { get; init; }
 }
 
 public class AddExhibit
@@ -22,7 +21,4 @@ public class AddExhibit
     public required DateTime DateTimeSeizedProduced { get; set; }
     public required string WhereSeizedProduced { get; set; }
     public required string SeizedBy { get; set; }
-
-    [DataMember(Name = "UserIds", EmitDefaultValue = false)]
-    public List<string>? UserIds { get; set; }
 }
