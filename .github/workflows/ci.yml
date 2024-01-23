@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           tag=$(git describe --tags --abbrev=0)
-          release_name="App-$tag-${{ matrix.target }}"
+          release_name="LighthouseNotes-Server-$tag-${{ matrix.target }}"
 
           # Build everything
           dotnet publish Server.csproj --framework net7.0 --runtime "${{ matrix.target }}" -c Release -o "$release_name" --self-contained false 
@@ -56,7 +56,7 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: "App*"
+          files: "LighthouseNotes-Server-*"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
