@@ -387,13 +387,7 @@ public class UserController : ControllerBase
 
         if (organization == null)
             return NotFound($"A organization with the Auth0 Organization ID `{organizationId}` can not be found!");
-
-
-        // Log the user's organization ID and the user's ID
-        IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
-
+        
         // Create the user based on the provided values with default settings
         Database.User userModel = new()
         {
@@ -441,6 +435,10 @@ public class UserController : ControllerBase
             Roles = userModel.Roles.Select(r => r.Name).ToList()
         };
 
+        // Log the user's organization ID and the user's ID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userModel.Id);
 
         // Log the successful creation of a user
         await _auditContext.LogAsync("Lighthouse Notes",
@@ -448,7 +446,7 @@ public class UserController : ControllerBase
             {
                 Action =
                     $"User `{userModel.DisplayName} ({userModel.JobTitle})` added themselves to {organization.DisplayName}`.",
-                UserID = userId, OrganizationID = organizationId
+                UserID = userModel.Id, OrganizationID = organizationId
             });
 
 
