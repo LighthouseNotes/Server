@@ -6,6 +6,7 @@
 	<GenerateDocumentationFile>true</GenerateDocumentationFile>
 	<NoWarn>$(NoWarn);1591</NoWarn>
 	<Nullable>enable</Nullable>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
