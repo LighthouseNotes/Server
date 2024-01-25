@@ -164,7 +164,7 @@ public class ImageController : ControllerBase
     }
 
     // POST: /case/?/?/image
-    [HttpPost("{type}/image/")]
+    [HttpPost("{type}/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
