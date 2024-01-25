@@ -45,7 +45,8 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(
         corsPolicyBuilder =>
         {
-            corsPolicyBuilder.WithOrigins("https://localhost:5001")
+            corsPolicyBuilder.WithOrigins(builder.Configuration["WebApp"] ?? throw new InvalidOperationException(
+                    "Connection string 'DatabaseContext' not found in appssettings.json"))
                 .AllowAnyMethod()
                 .AllowAnyHeader()
                 .AllowCredentials();
@@ -223,9 +224,6 @@ if (app.Environment.IsDevelopment())
 
     // Developer exception page for detailed exception 
     app.UseDeveloperExceptionPage();
-
-    // CORS
-    app.UseCors();
 }
 
 // If environment is production
@@ -235,6 +233,9 @@ if (app.Environment.IsProduction())
     app.UseCertificateForwarding();
     app.UseForwardedHeaders();
 }
+
+// CORS
+app.UseCors();
 
 // Audit Logging Middleware 
 app.UseAuditMiddleware(auditMiddleware => auditMiddleware
