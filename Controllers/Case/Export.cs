@@ -98,7 +98,7 @@ public class ExportController : ControllerBase
         // The case might not exist or the user does not have access to the case
         // Get case user from the database including the required entities 
         Database.CaseUser? caseUser = await _dbContext.CaseUser
-            .Where(cu => cu.Id == _sqids.Decode(caseId)[0] && cu.User.Id == rawUserId)
+            .Where(cu => cu.Case.Id == _sqids.Decode(caseId)[0] && cu.User.Id == rawUserId)
             .Include(cu => cu.ContemporaneousNotes)
             .Include(cu => cu.Tabs)
             .Include(cu => cu.Hashes)
