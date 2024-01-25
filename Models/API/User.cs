@@ -6,6 +6,7 @@ namespace Server.Models.API;
 public class User
 {
     public required string Id { get; init; }
+    public required string Auth0Id { get; set; }
     public required string JobTitle { get; init; }
     public required string DisplayName { get; init; }
     public required string GivenName { get; init; }

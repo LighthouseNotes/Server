@@ -54,6 +54,7 @@ public class UserController : ControllerBase
             .Select(u => new API.User
             {
                 Id = _sqids.Encode(u.Id),
+                Auth0Id = u.Auth0Id,
                 JobTitle = u.JobTitle,
                 GivenName = u.GivenName,
                 LastName = u.LastName,
@@ -121,6 +122,7 @@ public class UserController : ControllerBase
         return new API.User
         {
             Id = _sqids.Encode(user.Id),
+            Auth0Id = user.Auth0Id,
             JobTitle = user.JobTitle,
             GivenName = user.GivenName,
             LastName = user.LastName,
@@ -424,6 +426,7 @@ public class UserController : ControllerBase
         API.User userResponseObject = new()
         {
             Id = _sqids.Encode(userModel.Id),
+            Auth0Id = userModel.Auth0Id,
             JobTitle = userModel.JobTitle,
             GivenName = userModel.GivenName,
             LastName = userModel.LastName,
@@ -480,7 +483,7 @@ public class UserController : ControllerBase
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("UserID", requestingUserId);
 
         // Convert user ID squid to raw user ID
         long rawUserId = _sqids.Decode(userId).Single();
