@@ -132,7 +132,8 @@ public class ExportController : ControllerBase
             DisplayName = sCase.DisplayName,
             SIO = new API.User
             {
-                Id = _sqids.Encode(sioUser.Id), JobTitle = sioUser.JobTitle, DisplayName = sioUser.DisplayName,
+                Id = _sqids.Encode(sioUser.Id),  Auth0Id = sioUser.Auth0Id, 
+                JobTitle = sioUser.JobTitle, DisplayName = sioUser.DisplayName,
                 GivenName = sioUser.GivenName, LastName = sioUser.LastName, EmailAddress = sioUser.EmailAddress,
                 ProfilePicture = sioUser.ProfilePicture,
                 Organization = new API.Organization
@@ -144,7 +145,8 @@ public class ExportController : ControllerBase
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
-                Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                 GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                 ProfilePicture = cu.User.ProfilePicture,
                 Organization = new API.Organization
@@ -575,7 +577,8 @@ public class ExportController : ControllerBase
                 Created = TimeZoneInfo.ConvertTimeFromUtc(contemporaneousNote.Created, timeZone),
                 Creator = new API.User
                 {
-                    Id = _sqids.Encode(contemporaneousNote.Creator.Id), JobTitle = contemporaneousNote.Creator.JobTitle,
+                    Id = _sqids.Encode(contemporaneousNote.Creator.Id),  Auth0Id = contemporaneousNote.Creator.Auth0Id,
+                    JobTitle = contemporaneousNote.Creator.JobTitle,
                     DisplayName = contemporaneousNote.Creator.DisplayName,
                     GivenName = contemporaneousNote.Creator.GivenName, LastName = contemporaneousNote.Creator.LastName,
                     EmailAddress = contemporaneousNote.Creator.EmailAddress,
@@ -731,7 +734,8 @@ public class ExportController : ControllerBase
                 Created = TimeZoneInfo.ConvertTimeFromUtc(tab.Created, timeZone),
                 Creator = new API.User
                 {
-                    Id = _sqids.Encode(tab.Creator.Id), JobTitle = tab.Creator.JobTitle,
+                    Id = _sqids.Encode(tab.Creator.Id), Auth0Id = tab.Creator.Auth0Id,
+                    JobTitle = tab.Creator.JobTitle,
                     DisplayName = tab.Creator.DisplayName,
                     GivenName = tab.Creator.GivenName, LastName = tab.Creator.LastName,
                     EmailAddress = tab.Creator.EmailAddress,

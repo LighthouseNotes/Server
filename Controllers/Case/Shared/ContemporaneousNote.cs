@@ -79,6 +79,7 @@ public class SharedContemporaneousNotesController : ControllerBase
             Creator = new API.User
             {
                 Id = _sqids.Encode(cn.Creator.Id),
+                Auth0Id = cn.Creator.Auth0Id,
                 DisplayName = cn.Creator.DisplayName,
                 EmailAddress = cn.Creator.EmailAddress,
                 GivenName = cn.Creator.GivenName,

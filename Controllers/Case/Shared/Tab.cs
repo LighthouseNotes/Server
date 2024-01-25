@@ -80,6 +80,7 @@ public class SharedTabsController : ControllerBase
             Creator = new API.User
             {
                 Id = _sqids.Encode(t.Creator.Id),
+                Auth0Id = t.Creator.Auth0Id,
                 DisplayName = t.Creator.DisplayName,
                 EmailAddress = t.Creator.EmailAddress,
                 GivenName = t.Creator.GivenName,
@@ -162,6 +163,7 @@ public class SharedTabsController : ControllerBase
             Creator = new API.User
             {
                 Id = _sqids.Encode(tab.Creator.Id),
+                Auth0Id = tab.Creator.Auth0Id,
                 DisplayName = tab.Creator.DisplayName,
                 EmailAddress = tab.Creator.EmailAddress,
                 GivenName = tab.Creator.GivenName,
@@ -261,6 +263,7 @@ public class SharedTabsController : ControllerBase
             Creator = new API.User
             {
                 Id = _sqids.Encode(tabModel.Creator.Id),
+                Auth0Id = tabModel.Creator.Auth0Id,
                 DisplayName = tabModel.Creator.DisplayName,
                 EmailAddress = tabModel.Creator.EmailAddress,
                 GivenName = tabModel.Creator.GivenName,

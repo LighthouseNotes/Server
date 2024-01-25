@@ -63,7 +63,8 @@ public class CaseController : ControllerBase
                 DisplayName = c.DisplayName,
                 SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
                 {
-                    Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                    Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                    JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                     GivenName = cu.User.GivenName,
                     LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                     ProfilePicture = cu.User.ProfilePicture,
@@ -76,7 +77,8 @@ public class CaseController : ControllerBase
                 Status = c.Status,
                 Users = c.Users.Select(cu => new API.User
                 {
-                    Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                    Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                    JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                     GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                     ProfilePicture = cu.User.ProfilePicture,
                     Organization = new API.Organization
@@ -144,7 +146,8 @@ public class CaseController : ControllerBase
             DisplayName = sCase.DisplayName,
             SIO = sCase.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
             {
-                Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                 GivenName = cu.User.GivenName,
                 LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                 ProfilePicture = cu.User.ProfilePicture,
@@ -157,7 +160,8 @@ public class CaseController : ControllerBase
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
-                Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                 GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                 ProfilePicture = cu.User.ProfilePicture,
                 Organization = new API.Organization
@@ -459,7 +463,8 @@ public class CaseController : ControllerBase
             DisplayName = sCase.DisplayName,
             SIO = new API.User
             {
-                Id = _sqids.Encode(SIOUser.Id), JobTitle = SIOUser.JobTitle, DisplayName = SIOUser.DisplayName,
+                Id = _sqids.Encode(SIOUser.Id), Auth0Id = SIOUser.Auth0Id,
+                JobTitle = SIOUser.JobTitle, DisplayName = SIOUser.DisplayName,
                 GivenName = SIOUser.GivenName,
                 LastName = SIOUser.LastName, EmailAddress = SIOUser.EmailAddress,
                 ProfilePicture = SIOUser.ProfilePicture,
@@ -472,7 +477,8 @@ public class CaseController : ControllerBase
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
-                Id = _sqids.Encode(cu.User.Id), JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
                 GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
                 ProfilePicture = cu.User.ProfilePicture,
                 Organization = new API.Organization
