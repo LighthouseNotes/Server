@@ -763,13 +763,14 @@ public class ExportController : ControllerBase
         // Initialize HTML to PDF converter
         HtmlToPdfConverter htmlConverter = new();
 
-        const string baseUrl = "C:/Temp/HTMLFiles/";
+        // Set temp location
+        string baseUrl = Path.GetTempPath();
 
         //Initialize Blink Converter Settings
         BlinkConverterSettings blinkConverterSettings = new();
 
         // Read MudBlazor css file and set custom CSS
-        using StreamReader streamReader = new(@"C:\Users\ben\source\repos\LighthouseNotes\Server\MudBlazor.min.css",
+        using StreamReader streamReader = new(@"MudBlazor.min.css",
             Encoding.UTF8);
         string mudBlazorCSS = await streamReader.ReadToEndAsync();
         blinkConverterSettings.Css = mudBlazorCSS;
