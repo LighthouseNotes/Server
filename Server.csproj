@@ -53,16 +53,8 @@
   <ItemGroup>
     <None Remove="Properties\serviceDependencies.json" />
     <None Remove="Properties\serviceDependencies.local.json" />
+    <None Update="MudBlazor.min.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
-  
-  <ItemGroup>
-    <None Remove="Properties\serviceDependencies.json" />
-    <None Remove="Properties\serviceDependencies.local.json" />
-  </ItemGroup>
-  
-  <ItemGroup>
-    <_ContentIncludedByDefault Remove="test\appsettings.Development.json" />
-    <_ContentIncludedByDefault Remove="test\appsettings.json" />
-  </ItemGroup>
-
 </Project>
