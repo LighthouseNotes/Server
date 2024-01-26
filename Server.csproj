@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <PublishSingleFile>true</PublishSingleFile>
-    <Version>$VERSION</Version>
+    <Version>${VERSION}</Version>
   </PropertyGroup>
 
   <ItemGroup>
