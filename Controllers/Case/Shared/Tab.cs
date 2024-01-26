@@ -1,6 +1,7 @@
 ﻿using System.Security.Cryptography;
 using Minio;
 using Minio.DataModel;
+using Minio.DataModel.Args;
 using Minio.Exceptions;
 
 namespace Server.Controllers.Case.Shared;
@@ -331,7 +332,7 @@ public class SharedTabsController : ControllerBase
             return NotFound($"The shared tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
 
         // Create minio client
-        MinioClient minio = new MinioClient()
+        IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
             .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
             .WithSSL(organizationSettings.S3NetworkEncryption)
@@ -460,7 +461,7 @@ public class SharedTabsController : ControllerBase
             return NotFound($"The shared tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
 
         // Create minio client
-        MinioClient minio = new MinioClient()
+        IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
             .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
             .WithSSL(organizationSettings.S3NetworkEncryption)

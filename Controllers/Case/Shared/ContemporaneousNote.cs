@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Minio;
 using Minio.DataModel;
+using Minio.DataModel.Args;
 using Minio.Exceptions;
 
 namespace Server.Controllers.Case.Shared;
@@ -150,7 +151,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         if (contemporaneousNote == null) return NotFound($"Can not find the note with the ID `{noteId}`");
 
         // Create minio client
-        MinioClient minio = new MinioClient()
+        IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
             .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
             .WithSSL(organizationSettings.S3NetworkEncryption)
@@ -273,7 +274,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // The case might not exist or the user does not have access to the case
         
         // Create minio client
-        MinioClient minio = new MinioClient()
+        IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
             .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
             .WithSSL(organizationSettings.S3NetworkEncryption)

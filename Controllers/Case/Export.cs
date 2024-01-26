@@ -5,6 +5,7 @@ using BlazorTemplater;
 using HtmlAgilityPack;
 using Minio;
 using Minio.DataModel;
+using Minio.DataModel.Args;
 using Minio.Exceptions;
 using Syncfusion.HtmlConverter;
 using Syncfusion.Pdf;
@@ -108,7 +109,7 @@ public class ExportController : ControllerBase
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
         // Create minio client
-        MinioClient minio = new MinioClient()
+        IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
             .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
             .WithSSL(organizationSettings.S3NetworkEncryption)
