@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -6,6 +7,15 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
+
+// Version and copyright message
+Console.ForegroundColor = ConsoleColor.Cyan; 
+Console.WriteLine("Lighthouse Notes Server");
+Console.WriteLine(Assembly.GetEntryAssembly()!.GetName().Version);
+Console.WriteLine();
+Console.WriteLine("(C) Copyright 2024 Lighthouse Notes");
+Console.WriteLine();
+Console.ForegroundColor = ConsoleColor.White;
 
 // Create builder
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
