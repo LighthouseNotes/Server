@@ -20,14 +20,14 @@ jobs:
       - name: Get version
         run: |
           tag=${{ github.event.release.tag_name }}
-          VERSION=${tag#v}
+          echo "VERSION=${tag#v}" >> $GITHUB_ENV
 
       - name: Bump build version
         id: bump
         uses: vers-one/dotnet-project-version-updater@v1.3
         with:
           file: "Server.csproj"
-          version: ${VERSION}
+          version: ${{ env.VERSION }}
 
       - run: |
           git config user.name "${GITHUB_ACTOR}"
