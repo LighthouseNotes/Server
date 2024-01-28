@@ -1,4 +1,6 @@
-﻿using System.Security.Cryptography;
+﻿using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Web;
 using BlazorTemplater;
@@ -769,7 +771,30 @@ public class ExportController : ControllerBase
 
         //Initialize Blink Converter Settings
         BlinkConverterSettings blinkConverterSettings = new();
+        blinkConverterSettings.CommandLineArguments.Add("--no-sandbox");
+        blinkConverterSettings.CommandLineArguments.Add("--disable-setuid-sandbox");
 
+        // If running on Windows then blink binaries are at %SystemDrive%}/Program Files (x86)/Syncfusion/HTMLConverter/x.x.x/BlinkBinaries/
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // Get Syncfusion version
+            string? version = Assembly.GetAssembly(typeof(HtmlToPdfConverter))?.GetName().Version?.ToString(3);
+            
+            // If version is null then throw an exception
+            if (version == null)
+            {
+                throw new InvalidOperationException("Unable to determine the Syncfusion version!");
+            }
+            
+            // Set the blink path
+            blinkConverterSettings.BlinkPath = @$"{Path.GetPathRoot(Environment.SystemDirectory)}/Program Files (x86)/Syncfusion/HTMLConverter/{version}/BlinkBinaries/";
+        }
+        // Else BlinkBinaries are in the executing directory 
+        else
+        {
+            blinkConverterSettings.BlinkPath = "BlinkBinaries/";
+        }
+        
         // Read MudBlazor css file and set custom CSS
         using StreamReader streamReader = new(@"MudBlazor.min.css",
             Encoding.UTF8);
