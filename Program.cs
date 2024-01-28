@@ -11,7 +11,7 @@ using Microsoft.OpenApi.Models;
 // Version and copyright message
 Console.ForegroundColor = ConsoleColor.Cyan; 
 Console.WriteLine("Lighthouse Notes Server");
-Console.WriteLine(Assembly.GetEntryAssembly()!.GetName().Version);
+Console.WriteLine(Assembly.GetEntryAssembly()!.GetName().Version?.ToString(3));
 Console.WriteLine();
 Console.WriteLine("(C) Copyright 2024 Lighthouse Notes");
 Console.WriteLine();
