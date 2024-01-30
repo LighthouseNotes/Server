@@ -402,7 +402,7 @@ public class UserController : ControllerBase
             ProfilePicture = userToAdd.ProfilePicture,
             Organization = organization,
             Settings = new Database.UserSettings
-                { Locale = "en-GB", DateFormat = "dddd dd MMMM yyyy", TimeFormat = "HH:SS", TimeZone = "GMT" }
+                { Locale = "en-GB", DateFormat = "dddd dd MMMM yyyy", TimeFormat = "HH:mm", TimeZone = "GMT" }
         };
 
         // Add the user
