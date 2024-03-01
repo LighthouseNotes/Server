@@ -196,7 +196,8 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
-            return Problem("Unable to find hash values for contemporaneous notes!");
+            if (objectHashes == null)
+                return Problem($"Unable to find hash value for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "Could not find hash value for shared contemporaneous note!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -221,11 +222,11 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"MD5 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"SHA256 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "SHA256 hash verification failed!");
 
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
