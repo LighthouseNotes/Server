@@ -49,6 +49,7 @@ public class ImageController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long rawUserId = preflightResponse.Details.UserId;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -57,7 +58,7 @@ public class ImageController : ControllerBase
 
         // Get case user from the database including the required entities 
         Database.CaseUser? caseUser = await _dbContext.CaseUser
-            .Where(cu => cu.Case.Id == _sqids.Decode(caseId)[0] && cu.User.Id == rawUserId)
+            .Where(cu => cu.Case.Id == rawCaseId && cu.User.Id == rawUserId)
             .Include(cu => cu.Hashes)
             .SingleOrDefaultAsync();
 
@@ -191,6 +192,7 @@ public class ImageController : ControllerBase
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long rawUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -199,7 +201,7 @@ public class ImageController : ControllerBase
 
         // Get case user from the database including the required entities 
         Database.CaseUser? caseUser = await _dbContext.CaseUser
-            .Where(cu => cu.Case.Id == _sqids.Decode(caseId)[0] && cu.User.Id == rawUserId)
+            .Where(cu => cu.Case.Id == rawCaseId && cu.User.Id == rawUserId)
             .Include(cu => cu.Hashes)
             .Include(cu => cu.Case)
             .SingleOrDefaultAsync();
@@ -396,6 +398,7 @@ public class ImageController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -404,7 +407,7 @@ public class ImageController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();
 
@@ -536,6 +539,7 @@ public class ImageController : ControllerBase
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -544,7 +548,7 @@ public class ImageController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();
 

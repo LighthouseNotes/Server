@@ -42,6 +42,7 @@ public class CaseUserController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         long requestingUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -50,7 +51,7 @@ public class CaseUserController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == requestingUserId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == requestingUserId))
             .SingleOrDefaultAsync();
 
         // If case does not exist then return a HTTP 404 error 
@@ -117,6 +118,7 @@ public class CaseUserController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         long requestingUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -125,7 +127,7 @@ public class CaseUserController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == requestingUserId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == requestingUserId))
             .Include(c => c.Users)
             .ThenInclude(cu => cu.User)
             .SingleOrDefaultAsync();

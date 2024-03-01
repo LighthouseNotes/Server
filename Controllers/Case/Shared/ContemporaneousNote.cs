@@ -48,6 +48,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -56,7 +57,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.SharedContemporaneousNotes)
             .ThenInclude(scn => scn.Creator)
             .ThenInclude(u => u.Roles)
@@ -123,6 +124,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -131,7 +133,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.SharedContemporaneousNotes)
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();
@@ -256,6 +258,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -264,7 +267,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.SharedContemporaneousNotes)
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();

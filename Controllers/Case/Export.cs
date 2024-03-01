@@ -63,6 +63,7 @@ public class ExportController : ControllerBase
         string userId = _sqids.Encode(rawUserId);
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
+        long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
         // IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -74,7 +75,7 @@ public class ExportController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == rawUserId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == rawUserId))
             .Include(c => c.Users)
             .ThenInclude(cu => cu.User)
             .ThenInclude(u => u.Organization)
@@ -101,7 +102,7 @@ public class ExportController : ControllerBase
         // The case might not exist or the user does not have access to the case
         // Get case user from the database including the required entities 
         Database.CaseUser? caseUser = await _dbContext.CaseUser
-            .Where(cu => cu.Case.Id == _sqids.Decode(caseId)[0] && cu.User.Id == rawUserId)
+            .Where(cu => cu.Case.Id == rawCaseId && cu.User.Id == rawUserId)
             .Include(cu => cu.ContemporaneousNotes)
             .Include(cu => cu.Tabs)
             .Include(cu => cu.Hashes)

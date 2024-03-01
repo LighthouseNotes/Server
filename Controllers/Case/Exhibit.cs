@@ -40,6 +40,7 @@ public class ExhibitController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         long userId = preflightResponse.Details.UserId;
+        long rawCaseId = _sqids.Decode(caseId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -49,7 +50,7 @@ public class ExhibitController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.Exhibits)
             .SingleOrDefaultAsync();
 
@@ -95,6 +96,7 @@ public class ExhibitController : ControllerBase
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
         long userId = preflightResponse.Details.UserId;
+        long rawCaseId = _sqids.Decode(caseId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -104,7 +106,7 @@ public class ExhibitController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.Exhibits)
             .SingleOrDefaultAsync();
 
@@ -158,6 +160,7 @@ public class ExhibitController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
+        long rawCaseId = _sqids.Decode(caseId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -180,7 +183,7 @@ public class ExhibitController : ControllerBase
 
         // Get case from the database including the required entities 
         Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == _sqids.Decode(caseId)[0] && c.Users.Any(cu => cu.User.Id == userId))
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
             .Include(c => c.Exhibits)
             .SingleOrDefaultAsync();
 
