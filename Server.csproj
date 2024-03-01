@@ -15,8 +15,14 @@
     <PackageReference Include="Audit.WebApi" Version="21.0.3" />
     <PackageReference Include="BlazorTemplater" Version="1.5.1" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.57" />
+    <PackageReference Include="MeiliSearch" Version="0.14.7" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.15" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.15" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.15">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="7.4.0" />
     <PackageReference Include="Minio" Version="6.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="7.0.11" />
     <PackageReference Include="Sqids" Version="3.1.0" />
