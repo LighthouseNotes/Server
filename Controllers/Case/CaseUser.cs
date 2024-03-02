@@ -43,6 +43,7 @@ public class CaseUserController : ControllerBase
         long requestingUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawUserId = _sqids.Decode(userId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -64,7 +65,7 @@ public class CaseUserController : ControllerBase
 
         // Get the user form the database
         Database.User? user = _dbContext.User.FirstOrDefault(u =>
-            u.Id == _sqids.Decode(userId)[0] && u.Organization.Id == organizationId);
+            u.Id == rawUserId  && u.Organization.Id == organizationId);
 
         // If user is null then return HTTP 404 not found 
         if (user == null) return NotFound($"A user with the ID `{userId}` does not exist in your organization!");
@@ -119,6 +120,7 @@ public class CaseUserController : ControllerBase
         long requestingUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawUserId = _sqids.Decode(userId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -139,7 +141,7 @@ public class CaseUserController : ControllerBase
             sCase.Users.SingleOrDefault(cu => cu.IsSIO && cu.User.Id == requestingUserId) == null)
             return Unauthorized("You do not have permission to edit this case as you did not create it!");
 
-        Database.CaseUser? caseUser = sCase.Users.FirstOrDefault(cu => cu.User.Id == _sqids.Decode(userId)[0]);
+        Database.CaseUser? caseUser = sCase.Users.FirstOrDefault(cu => cu.User.Id == rawUserId);
 
         if (caseUser == null)
             return NotFound(

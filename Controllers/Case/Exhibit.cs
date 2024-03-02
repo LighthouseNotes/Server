@@ -97,6 +97,7 @@ public class ExhibitController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         long userId = preflightResponse.Details.UserId;
         long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawExhibitId = _sqids.Decode(exhibitId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -114,7 +115,7 @@ public class ExhibitController : ControllerBase
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
         // Fetch exhibit from the database
-        Database.Exhibit? exhibit = sCase.Exhibits.SingleOrDefault(e => e.Id == _sqids.Decode(exhibitId)[0]);
+        Database.Exhibit? exhibit = sCase.Exhibits.SingleOrDefault(e => e.Id == rawExhibitId);
 
         // If exhibit is null return HTTP 404 error
         if (exhibit == null)
