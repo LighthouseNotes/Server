@@ -123,7 +123,7 @@ public class ImageController : ControllerBase
 
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
-            return Problem("Unable to find hash values for the requested image!");
+            return Problem($"Unable to find hash values for the image `{objectMetadata.ObjectName}` at `{objectPath}`!", title: "Could not find hash value for the image!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -148,11 +148,11 @@ public class ImageController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"MD5 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!", title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"SHA256 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!", title: "SHA256 hash verification failed!");
 
         // Fetch presigned url for object  
         string url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
@@ -470,7 +470,7 @@ public class ImageController : ControllerBase
 
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
-            return Problem("Unable to find hash values for the requested image!");
+            return Problem($"Unable to find hash values for the shared image `{objectMetadata.ObjectName}` at `{objectPath}`!", title: "Could not find hash value for the shared image!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -495,11 +495,11 @@ public class ImageController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"MD5 hash verification failed for shared image `{objectMetadata.ObjectName}` at `{objectPath}`!", title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"SHA256 hash verification failed for the shared image `{objectMetadata.ObjectName}` at `{objectPath}`!", title: "SHA256 hash verification failed!");
 
         // Fetch presigned url for object  
         string url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
