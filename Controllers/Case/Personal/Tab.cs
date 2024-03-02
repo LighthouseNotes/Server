@@ -308,7 +308,7 @@ public class TabsController : ControllerBase
         catch (ObjectNotFoundException)
         {
             return Problem(
-                $"Can not find the S3 object for the tab with the ID `{tabId}` at the following path `{objectPath}`.");
+                $"Can not find the S3 object for the tab with the ID `{tabId}` at the following path `{objectPath}`.", title: "Can not find the S3 object for the tab!");
         }
 
         // Fetch object hash from database
@@ -317,7 +317,7 @@ public class TabsController : ControllerBase
 
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
-            return Problem($"Unable to find hash values for the tab with the ID `{tabId}`!");
+            return Problem($"Unable to find hash values for the tab with the ID `{tabId}`!", title:"Unable to find hash values for the tab!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -342,11 +342,11 @@ public class TabsController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"MD5 hash verification failed for tab with the ID `{tabId}` at the path `{objectPath}`!", title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"SHA256 hash verification failed for tab with the ID `{tabId}` at the path `{objectPath}`!", title: "SHA256 hash verification failed!");
 
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
