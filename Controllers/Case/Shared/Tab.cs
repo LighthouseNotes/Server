@@ -126,6 +126,7 @@ public class SharedTabsController : ControllerBase
         long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
         long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawTabId = _sqids.Decode(tabId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -143,7 +144,7 @@ public class SharedTabsController : ControllerBase
         
         // Fetch tab from the database
         Database.SharedTab? tab = await _dbContext.SharedTab
-            .Where(st => st.Id == _sqids.Decode(tabId)[0] && st.Case == sCase)
+            .Where(st => st.Id == rawTabId && st.Case == sCase)
             .Include(st => st.Creator)
             .ThenInclude(u => u.Organization)
             .Include(st => st.Creator)
@@ -311,6 +312,7 @@ public class SharedTabsController : ControllerBase
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
         long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawTabId = _sqids.Decode(tabId)[0];
 
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -329,7 +331,7 @@ public class SharedTabsController : ControllerBase
         // The case might not exist or the user does not have access to the case
         
         // Fetch the tab from the database
-        Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == _sqids.Decode(tabId)[0]);
+        Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == rawTabId);
 
         // If tab is null then return HTTP 404 error as it does not exist
         if (tab == null)
@@ -369,7 +371,7 @@ public class SharedTabsController : ControllerBase
         catch (ObjectNotFoundException)
         {
             return Problem(
-                $"Can not find the S3 object for the shared tab with the ID `{tabId}` at the following path `{objectPath}`.");
+                $"Can not find the S3 object for the shared tab with the ID `{tabId}` at the following path `{objectPath}`.", title: "Can not find the S3 object for the shared tab!");
         }
 
         // Fetch object hash from database
@@ -378,7 +380,7 @@ public class SharedTabsController : ControllerBase
 
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
-            return Problem($"Unable to find hash values for the shared tab with the ID `{tabId}`!");
+            return Problem($"Unable to find hash values for the shared tab with the ID `{tabId}`!", title:"Unable to find hash values for the shared tab!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -403,11 +405,11 @@ public class SharedTabsController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"MD5 hash verification failed for the shared tab with the ID `{tabId}` at the path `{objectPath}`!", title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"MD5 hash verification failed for: `{objectPath}`!");
+            return Problem($"SHA256 hash verification failed for the shared tab with the ID `{tabId}` at the path `{objectPath}`!", title: "SHA256 hash verification failed!");
 
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
@@ -441,6 +443,7 @@ public class SharedTabsController : ControllerBase
         long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawTabId = _sqids.Decode(tabId)[0];
         
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
@@ -459,7 +462,7 @@ public class SharedTabsController : ControllerBase
         // The case might not exist or the user does not have access to the case
         
         // Fetch tab from the database
-        Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == _sqids.Decode(tabId)[0]);
+        Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == rawTabId);
 
         // If tab is null then return a HTTP 404 error
         if (tab == null)
