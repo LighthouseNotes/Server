@@ -1,8 +1,11 @@
 using System.Security.Cryptography;
+using HtmlAgilityPack;
+using Meilisearch;
 using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
+using Index = Meilisearch.Index;
 
 namespace Server.Controllers.Case.Shared;
 
@@ -73,7 +76,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
-        // Return a list of the user's contemporaneous notes
+        // Return a list of the contemporaneous notes
         return sCase.SharedContemporaneousNotes.Select(cn => new API.SharedContemporaneousNotes
         {
             Id = _sqids.Encode(cn.Id),
@@ -333,6 +336,51 @@ public class SharedContemporaneousNotesController : ControllerBase
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
+            
+            // Read memory stream to text
+            StreamReader reader = new(memoryStream);
+            string text = await reader.ReadToEndAsync();
+            
+            // Create html document from text
+            HtmlDocument htmlDoc = new();
+            htmlDoc.LoadHtml(text);
+
+            // Create a space separated list of all the text content in the HTML note
+            string content = htmlDoc.DocumentNode.SelectNodes("//text()").Aggregate("", (current, node) => current + $" {node.InnerText}");
+
+            // Create Meilisearch Client
+            MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
+            // Try getting the contemporaneous-notes index
+            try
+            {
+                await meiliClient.GetIndexAsync("shared-contemporaneous-notes");
+            }
+            // Catch Meilisearch exceptions
+            catch  (MeilisearchApiError e)
+            {
+                // If error code is index_not_found create the index
+                if (e.Code == "index_not_found")
+                {
+                    await meiliClient.CreateIndexAsync("shared-contemporaneous-notes", "id");
+                    await meiliClient.Index("shared-contemporaneous-notes").UpdateFilterableAttributesAsync(new [] { "caseId" });
+                }
+            }
+           
+            // Get the contemporaneous-notes index
+            Index index = meiliClient.Index("shared-contemporaneous-notes");  
+            
+            await index.AddDocumentsAsync(new [] 
+            { 
+                new SharedDocument  {
+                    Id = contemporaneousNote.Id, 
+                    CaseId = _sqids.Decode(caseId)[0], 
+                    Content = content
+                } 
+            });
+            
+            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
+            memoryStream.Position = 0;
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
@@ -377,6 +425,105 @@ public class SharedContemporaneousNotesController : ControllerBase
             return Problem(
                 $"An unknown error occured while adding a contemporaneous note. For more information see the following error message: `{e.Message}`");
         }
+    }
+
+    // POST:  /case/?/shared/contemporaneous-notes/search
+    [HttpPost("contemporaneous-notes/search")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
+    [Authorize(Roles = "user")]
+    public async Task<ActionResult<List<API.SharedContemporaneousNotes>>> GetSearchContemporaneousNotes(string caseId, API.Search search)
+    {
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks();
+
+        // If preflight checks returned a HTTP error raise it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
+
+        // If preflight checks details are null return a HTTP 500 error
+        if (preflightResponse.Details == null)
+            return Problem(
+                "Preflight checks failed with an unknown error!"
+            );
+
+        // Set variables from preflight response
+        string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
+        long userId = preflightResponse.Details.UserId;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
+        
+        long rawCaseId = _sqids.Decode(caseId)[0];
+
+        // Log the user's organization ID and the user's ID
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("OrganizationID", organizationId);
+        auditScope.SetCustomField("UserID", userId);
+
+        // Get case from the database including the required entities 
+        Database.Case? sCase = await _dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+            .Include(c => c.SharedContemporaneousNotes)
+            .ThenInclude(scn => scn.Creator)
+            .ThenInclude(u => u.Roles)
+            .Include(c => c.SharedContemporaneousNotes)
+            .ThenInclude(scn => scn.Creator)
+            .ThenInclude(u => u.Organization)
+            .SingleOrDefaultAsync();
+
+        // If case does not exist then return a HTTP 404 error 
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // The case might not exist or the user does not have access to the case
+        
+        // Create Meilisearch Client
+        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        
+        // Get the contemporaneous-notes index
+        Index index = meiliClient.Index("shared-contemporaneous-notes");  
+        
+        // Search the index for the string filtering by case id and user id
+        ISearchable<SharedDocument> searchResult = await index.SearchAsync<SharedDocument>(
+            search.Query,
+            new SearchQuery
+            {
+                AttributesToSearchOn = new [] {"content"},
+                AttributesToRetrieve = new [] {"id"},
+                Filter = $"caseId = {rawCaseId}",
+            }
+        );
+     
+        // Create a list of contemporaneous notes Ids that contain a match 
+        List<long> contemporaneousNotesIds = searchResult.Hits.Select(cn => cn.Id).ToList();
+       
+        // Get the user's time zone
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
+
+        // Return a list of the contemporaneous notes
+        return sCase.SharedContemporaneousNotes.Where(cn => contemporaneousNotesIds.Contains(cn.Id))
+            .Select(cn => new API.SharedContemporaneousNotes
+            {
+                Id = _sqids.Encode(cn.Id),
+                Created = TimeZoneInfo.ConvertTimeFromUtc(cn.Created, timeZone),
+                Creator = new API.User
+                {
+                    Id = _sqids.Encode(cn.Creator.Id),
+                    Auth0Id = cn.Creator.Auth0Id,
+                    DisplayName = cn.Creator.DisplayName,
+                    EmailAddress = cn.Creator.EmailAddress,
+                    GivenName = cn.Creator.GivenName,
+                    LastName = cn.Creator.LastName,
+                    JobTitle = cn.Creator.JobTitle,
+                    ProfilePicture = cn.Creator.ProfilePicture,
+                    Roles = cn.Creator.Roles.Select(r => r.Name).ToList(),
+                    Organization = new API.Organization
+                    {
+                        DisplayName = cn.Creator.Organization.DisplayName,
+                        Name = cn.Creator.Organization.Name
+                    }
+                }
+            }).ToList();
     }
 
     private async Task<PreflightResponse> PreflightChecks()

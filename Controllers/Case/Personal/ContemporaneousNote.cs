@@ -344,7 +344,7 @@ public class ContemporaneousNotesController : ControllerBase
             
             await index.AddDocumentsAsync(new [] 
             { 
-                new Test  {
+                new Document  {
                     Id = contemporaneousNote.Id, 
                     UserId = userId, 
                     CaseId = _sqids.Decode(caseId)[0], 
@@ -451,7 +451,7 @@ public class ContemporaneousNotesController : ControllerBase
         Index index = meiliClient.Index("contemporaneous-notes");  
         
         // Search the index for the string filtering by case id and user id
-        ISearchable<Test> searchResult = await index.SearchAsync<Test>(
+        ISearchable<Document> searchResult = await index.SearchAsync<Document>(
             search.Query,
             new SearchQuery
             {
@@ -535,11 +535,5 @@ public class ContemporaneousNotesController : ControllerBase
         public required Database.UserSettings UserSettings { get; init; }
     }
 
-    class Test
-    {
-        public long Id { get; set; }
-        public long CaseId { get; set; }
-        public long UserId { get; set; }
-        public string Content { get; set; }
-    }
+  
 }
