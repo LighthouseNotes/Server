@@ -13,5 +13,5 @@ public class User : Base
     public ICollection<Role> Roles { get; set; } = new List<Role>();
     public UserSettings Settings { get; init; } = null!;
     public Organization Organization { get; init; } = null!;
-    public IEnumerable<Event> Events { get; } = new List<Event>();
+    public ICollection<Event> Events { get; } = new List<Event>();
 }

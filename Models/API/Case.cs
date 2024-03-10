@@ -11,6 +11,7 @@ public class Case
     public required string DisplayName { get; init; }
     public required User SIO { get; init; }
     public DateTime Modified { get; init; }
+    public DateTime Accessed { get; init; }
     public DateTime Created { get; init; }
     public required string Status { get; init; }
     public required ICollection<User> Users { get; init; }

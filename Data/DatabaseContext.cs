@@ -57,7 +57,7 @@ public class DatabaseContext : DbContext
                 }
     }
 
-    public IEnumerable<Database.Event> Event => Set<Database.Event>();
+    public DbSet<Database.Event> Event => Set<Database.Event>();
     public DbSet<Database.Organization> Organization => Set<Database.Organization>();
     public IEnumerable<Database.OrganizationSettings> OrganizationSettings =>
         Set<Database.OrganizationSettings>();
@@ -75,7 +75,6 @@ public class DatabaseContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.HasPostgresExtension("pg_trgm");
 
         // Organization Configuration Relationship (one to one)
         modelBuilder.Entity<Database.Organization>()
@@ -88,6 +87,13 @@ public class DatabaseContext : DbContext
             .HasOne(e => e.Settings)
             .WithOne(e => e.User)
             .HasForeignKey<Database.UserSettings>("UserId");
+        
+        // User events relationship (one to many)
+        modelBuilder.Entity<Database.User>()
+            .HasMany(u => u.Events)
+            .WithOne(e => e.User)
+            .HasForeignKey("UserId")
+            .IsRequired(false);
 
         modelBuilder
             .Entity<Database.Event>()

@@ -24,7 +24,7 @@ public class UserController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<List<API.User>>> GetUsers()
+    public async Task<ActionResult<List<API.User>>> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "", bool sio = false)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -46,29 +46,232 @@ public class UserController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
+        
+        // Create sort list
+        List<string>? sortList = null;
+        
+        // If raw sort is specified set sort list
+        if (!string.IsNullOrWhiteSpace(rawSort))
+        {
+            sortList = rawSort.Split(',').ToList();
+        }
+        
+        // Set pagination headers
+        HttpContext.Response.Headers.Add("X-Page", page.ToString());
+        HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
+        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.User.Count(u => u.Organization.Id == organizationId).ToString());
 
-        // Return all users in a organization
-        return _dbContext.Organization
-            .SelectMany(org => org.Users)
-            .Include(u => u.Roles)
-            .Select(u => new API.User
-            {
-                Id = _sqids.Encode(u.Id),
-                Auth0Id = u.Auth0Id,
-                JobTitle = u.JobTitle,
-                GivenName = u.GivenName,
-                LastName = u.LastName,
-                DisplayName = u.DisplayName,
-                EmailAddress = u.EmailAddress,
-                ProfilePicture = u.ProfilePicture,
-                Organization = new API.Organization
+        // If SIO is set to true only return the SIO users
+        if (sio)
+        {
+            HttpContext.Response.Headers.Add("X-Total-Pages", "1");
+            
+            return _dbContext.Organization
+                .Where(o => o.Id == organizationId)
+                .SelectMany(org => org.Users)
+                .Include(u => u.Roles)
+                .Where(u => u.Roles.Any(r => r.Name == "sio"))
+                .Select(u => new API.User
                 {
-                    Name = u.Organization.DisplayName,
-                    DisplayName = u.Organization.DisplayName
-                },
-                Roles = u.Roles.Select(r => r.Name).ToList()
-            })
-            .ToList();
+                    Id = _sqids.Encode(u.Id),
+                    Auth0Id = u.Auth0Id,
+                    JobTitle = u.JobTitle,
+                    GivenName = u.GivenName,
+                    LastName = u.LastName,
+                    DisplayName = u.DisplayName,
+                    EmailAddress = u.EmailAddress,
+                    ProfilePicture = u.ProfilePicture,
+                    Organization = new API.Organization
+                    {
+                        Name = u.Organization.DisplayName,
+                        DisplayName = u.Organization.DisplayName
+                    },
+                    Roles = u.Roles.Select(r => r.Name).ToList()
+                })
+                .ToList();
+        }
+        // If page size is 0 then list all users
+        if (pageSize == 0)
+        {
+            HttpContext.Response.Headers.Add("X-Total-Pages", "1");
+            // If no sort is provided or two many sort parameters are provided
+            if (sortList == null || sortList.Count != 1)
+                // Return all users in a organization
+                return _dbContext.Organization
+                    .Where(o => o.Id == organizationId)
+                    .SelectMany(org => org.Users)
+                    .Include(u => u.Roles)
+                    .Select(u => new API.User
+                    {
+                        Id = _sqids.Encode(u.Id),
+                        Auth0Id = u.Auth0Id,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName,
+                        EmailAddress = u.EmailAddress,
+                        ProfilePicture = u.ProfilePicture,
+                        Organization = new API.Organization
+                        {
+                            Name = u.Organization.DisplayName,
+                            DisplayName = u.Organization.DisplayName
+                        },
+                        Roles = u.Roles.Select(r => r.Name).ToList()
+                    })
+                    .ToList();
+            
+            string[] sortNoLimit = sortList[0].Split(" ");
+        
+            if (sortNoLimit[1] == "asc")
+            {
+                // Return all users in a organization
+                return _dbContext.Organization
+                    .Where(o => o.Id == organizationId)
+                    .SelectMany(org => org.Users)
+                    .OrderBy(u =>  EF.Property<object>(u, sortNoLimit[0]))
+                    .Include(u => u.Roles)
+                    .Select(u => new API.User
+                    {
+                        Id = _sqids.Encode(u.Id),
+                        Auth0Id = u.Auth0Id,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName,
+                        EmailAddress = u.EmailAddress,
+                        ProfilePicture = u.ProfilePicture,
+                        Organization = new API.Organization
+                        {
+                            Name = u.Organization.DisplayName,
+                            DisplayName = u.Organization.DisplayName
+                        },
+                        Roles = u.Roles.Select(r => r.Name).ToList()
+                    })
+                    .ToList();
+            }
+            
+            if(sortNoLimit[1] == "desc")
+            {
+                // Return all users in a organization
+                return _dbContext.Organization
+                    .Where(o => o.Id == organizationId)
+                    .SelectMany(org => org.Users)
+                    .OrderBy(u =>  EF.Property<object>(u, sortNoLimit[0]))
+                    .Include(u => u.Roles)
+                    .Select(u => new API.User
+                    {
+                        Id = _sqids.Encode(u.Id),
+                        Auth0Id = u.Auth0Id,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName,
+                        EmailAddress = u.EmailAddress,
+                        ProfilePicture = u.ProfilePicture,
+                        Organization = new API.Organization
+                        {
+                            Name = u.Organization.DisplayName,
+                            DisplayName = u.Organization.DisplayName
+                        },
+                        Roles = u.Roles.Select(r => r.Name).ToList()
+                    })
+                    .ToList();
+            }
+
+            return BadRequest($"Did you understand if you want to sort {sortNoLimit[0]} ascending or descending. Use asc or desc to sort!");
+        }
+      
+        // Calculate page size and set header
+        HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.User.Count(u => u.Organization.Id == organizationId) + pageSize - 1 ) / pageSize ).ToString());
+        
+        // If no sort is provided or two many sort parameters are provided
+        if (sortList == null || sortList.Count != 1)
+            // Return all users in a organization
+            return _dbContext.Organization
+                .Where(o => o.Id == organizationId)
+                .SelectMany(org => org.Users)
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(u => u.Roles)
+                .Select(u => new API.User
+                {
+                    Id = _sqids.Encode(u.Id),
+                    Auth0Id = u.Auth0Id,
+                    JobTitle = u.JobTitle,
+                    GivenName = u.GivenName,
+                    LastName = u.LastName,
+                    DisplayName = u.DisplayName,
+                    EmailAddress = u.EmailAddress,
+                    ProfilePicture = u.ProfilePicture,
+                    Organization = new API.Organization
+                    {
+                        Name = u.Organization.DisplayName,
+                        DisplayName = u.Organization.DisplayName
+                    },
+                    Roles = u.Roles.Select(r => r.Name).ToList()
+                })
+                .ToList();
+            
+        string[] sort = sortList[0].Split(" ");
+        
+        if (sort[1] == "asc")
+        {
+            // Return all users in a organization
+            return _dbContext.Organization
+                .Where(o => o.Id == organizationId)
+                .SelectMany(org => org.Users)
+                .OrderBy(u =>  EF.Property<object>(u, sort[0]))
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(u => u.Roles)
+                .Select(u => new API.User
+                {
+                    Id = _sqids.Encode(u.Id),
+                    Auth0Id = u.Auth0Id,
+                    JobTitle = u.JobTitle,
+                    GivenName = u.GivenName,
+                    LastName = u.LastName,
+                    DisplayName = u.DisplayName,
+                    EmailAddress = u.EmailAddress,
+                    ProfilePicture = u.ProfilePicture,
+                    Organization = new API.Organization
+                    {
+                        Name = u.Organization.DisplayName,
+                        DisplayName = u.Organization.DisplayName
+                    },
+                    Roles = u.Roles.Select(r => r.Name).ToList()
+                })
+                .ToList();
+        }
+            
+        if(sort[1] == "desc")
+        {
+            // Return all users in a organization
+            return _dbContext.Organization
+                .Where(o => o.Id == organizationId)
+                .SelectMany(org => org.Users)
+                .OrderByDescending(u =>  EF.Property<object>(u, sort[0]))
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(u => u.Roles)
+                .Select(u => new API.User
+                {
+                    Id = _sqids.Encode(u.Id),
+                    Auth0Id = u.Auth0Id,
+                    JobTitle = u.JobTitle,
+                    GivenName = u.GivenName,
+                    LastName = u.LastName,
+                    DisplayName = u.DisplayName,
+                    EmailAddress = u.EmailAddress,
+                    ProfilePicture = u.ProfilePicture,
+                    Organization = new API.Organization
+                    {
+                        Name = u.Organization.DisplayName,
+                        DisplayName = u.Organization.DisplayName
+                    },
+                    Roles = u.Roles.Select(r => r.Name).ToList()
+                })
+                .ToList();
+        }
+
+        return BadRequest($"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
     }
 
 
