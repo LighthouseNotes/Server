@@ -9,6 +9,8 @@ public class OrganizationSettings
     public bool S3NetworkEncryption { get; init; } = true;
     public string? S3AccessKey { get; init; }
     public string? S3SecretKey { get; init; }
+    public string? MeilisearchUrl { get; init; }
+    public string? MeilisearchApiKey { get; init;}
 }
 
 public class UserSettings

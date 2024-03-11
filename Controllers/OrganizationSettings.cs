@@ -52,7 +52,9 @@ public class OrganizationSettingsController : ControllerBase
             S3AccessKey = organizationSettings.S3AccessKey,
             S3BucketName = organizationSettings.S3BucketName,
             S3NetworkEncryption = organizationSettings.S3NetworkEncryption,
-            S3SecretKey = organizationSettings.S3SecretKey
+            S3SecretKey = organizationSettings.S3SecretKey,
+            MeilisearchUrl = organizationSettings.MeilisearchUrl,
+            MeilisearchApiKey = organizationSettings.MeilisearchApiKey
         };
     }
 
@@ -165,6 +167,38 @@ public class OrganizationSettingsController : ControllerBase
                 });
 
             organizationSettings.S3SecretKey = updatedOrganizationSettings.S3SecretKey;
+        }
+        
+        // If Meilisearch Url is not null and does not equal the value in the database update it 
+        if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.MeilisearchUrl) &&
+            updatedOrganizationSettings.MeilisearchUrl != organizationSettings.MeilisearchUrl)
+        {
+            // Log s3 secret key change however do not log the change value
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"`{userNameJob}` updated the organizations `Meilisearch URL` setting from {organizationSettings.MeilisearchUrl}` to `{updatedOrganizationSettings.MeilisearchUrl}`.",
+                    UserID = userId, OrganizationID = organizationId
+                });
+
+            organizationSettings.MeilisearchUrl = updatedOrganizationSettings.MeilisearchUrl;
+        }
+        
+        // If Meilisearch Api key is not null and does not equal the value in the database update it 
+        if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.MeilisearchApiKey) &&
+            updatedOrganizationSettings.MeilisearchApiKey != organizationSettings.MeilisearchApiKey)
+        {
+            // Log s3 secret key change however do not log the change value
+            await _auditContext.LogAsync("Lighthouse Notes",
+                new
+                {
+                    Action =
+                        $"`{userNameJob}` updated the organizations `Meilisearch API Key` setting.",
+                    UserID = userId, OrganizationID = organizationId
+                });
+
+            organizationSettings.MeilisearchApiKey = updatedOrganizationSettings.MeilisearchApiKey;
         }
 
         // Save changes to the database
