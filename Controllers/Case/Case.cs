@@ -1,5 +1,8 @@
 ﻿// ReSharper disable InconsistentNaming
 
+using Meilisearch;
+using Index = Meilisearch.Index;
+
 namespace Server.Controllers.Case;
 
 [ApiController]
@@ -29,7 +32,7 @@ public class CaseController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<IEnumerable<API.Case>>> GetCases([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "")
+    public async Task<ActionResult<IEnumerable<API.Case>>> GetCases([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "", string search = "")
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -45,6 +48,7 @@ public class CaseController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
@@ -65,11 +69,75 @@ public class CaseController : ControllerBase
         // Set pagination headers
         HttpContext.Response.Headers.Add("X-Page", page.ToString());
         HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
-        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)).ToString());
-        HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)) + pageSize - 1 ) / pageSize ).ToString());
+      
         
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // Create Meilisearch Client
+            MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        
+            // Get the cases index
+            Index index = meiliClient.Index("cases");
+        
+            // Search the index for the string filtering by user id
+            ISearchable<Search.Case> searchResult = await index.SearchAsync<Search.Case>(
+                search,
+                new SearchQuery
+                {
+                    AttributesToSearchOn = new [] {"displayId", "name", "displayName", "sioDisplayName", "sioGivenName", "sioLastName"},
+                    AttributesToRetrieve = new [] {"id"},
+                    Filter = $"userIds = {userId}"
+                }
+            );
+     
+            // Create a list of case Ids that contain a match 
+            List<long> caseIds = searchResult.Hits.Select(c => c.Id).ToList();
+            
+            HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)  && caseIds.Contains(c.Id)).ToString());
+            HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id)) + pageSize - 1 ) / pageSize ).ToString());
+            
+            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id))
+                .OrderByDescending(c => c.Accessed)
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
+                {
+                    Id = _sqids.Encode(c.Id),
+                    DisplayId = c.DisplayId,
+                    Name = c.Name,
+                    DisplayName = c.DisplayName,
+                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
+                    {
+                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName,
+                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                        ProfilePicture = cu.User.ProfilePicture,
+                        Organization = new API.Organization
+                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                    }).Single(),
+                    Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
+                    Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
+                    Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
+                    Status = c.Status,
+                    Users = c.Users.Select(cu => new API.User
+                    {
+                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                        ProfilePicture = cu.User.ProfilePicture,
+                        Organization = new API.Organization
+                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                    }).ToList()
+                }).ToList();
+        }
+        
+        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)).ToString());
+        HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)) + pageSize - 1 ) / pageSize ).ToString());
         
         // If no sort is provided or two many sort parameters are provided, sort by accessed time
         if (sortList == null || sortList.Count != 1)
@@ -307,6 +375,7 @@ public class CaseController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = _sqids.Decode(caseId)[0];
@@ -327,6 +396,7 @@ public class CaseController : ControllerBase
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
         // Update values in the database if the provided values are not null
+
         if (updatedCase.Name != null && updatedCase.Name != sCase.Name)
         {
             // Log case name change
@@ -340,6 +410,9 @@ public class CaseController : ControllerBase
 
             // Update case name in the database
             sCase.Name = updatedCase.Name;
+
+            // Update display name
+            sCase.DisplayName = $"{sCase.DisplayId} {sCase.Name}";
         }
 
         if (updatedCase.DisplayId != null && updatedCase.DisplayId != sCase.DisplayId)
@@ -355,6 +428,9 @@ public class CaseController : ControllerBase
 
             // Update case ID in the database
             sCase.DisplayId = updatedCase.DisplayId;
+            
+            // Update display name
+            sCase.DisplayName = $"{sCase.DisplayId} {sCase.Name}";
         }
 
         if (updatedCase.Status != null && updatedCase.Status != sCase.Status)
@@ -437,9 +513,28 @@ public class CaseController : ControllerBase
                 sCase.Users.Single(cu => cu.User.Id == newSIO.Id).IsSIO = true;
             }
         }
-
+        
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
+        
+        // Create Meilisearch Client
+        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        
+        // Get the cases index
+        Index index = meiliClient.Index("cases");  
+        
+        // Update Meilisearch document
+        await index.UpdateDocumentsAsync(new [] {
+            new Search.Case()  {
+                Id = sCase.Id,
+                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
+                DisplayId = sCase.DisplayId,
+                DisplayName = sCase.DisplayName,
+                Name = sCase.Name,
+                SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
+                SIOGivenName =  sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
+                SIOLastName =  sCase.Users.Single(cu => cu.IsSIO).User.LastName
+            }});
 
         // Return no content
         return NoContent();
@@ -469,6 +564,7 @@ public class CaseController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
@@ -575,6 +671,42 @@ public class CaseController : ControllerBase
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
+        
+        // Create Meilisearch Client
+        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
+        // Try getting the contemporaneous-notes index
+        try
+        {
+            await meiliClient.GetIndexAsync("cases");
+        }
+        // Catch Meilisearch exceptions
+        catch  (MeilisearchApiError e)
+        {
+            // If error code is index_not_found create the index
+            if (e.Code == "index_not_found")
+            {
+                await meiliClient.CreateIndexAsync("cases", "id");
+                await meiliClient.Index("cases").UpdateFilterableAttributesAsync(new [] { "userIds" });
+            }
+        }
+           
+        // Get the cases index
+        Index index = meiliClient.Index("cases");  
+            
+        await index.AddDocumentsAsync(new [] 
+        { 
+            new Search.Case()  {
+                Id = sCase.Id,
+                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
+                DisplayId = sCase.DisplayId,
+                DisplayName = sCase.DisplayName,
+                Name = sCase.Name,
+                SIODisplayName = SIOUser.DisplayName,
+                SIOGivenName = SIOUser.GivenName,
+                SIOLastName = SIOUser.LastName
+            } 
+        });
 
         // Explicitly load roles for each user
         foreach (Database.CaseUser caseUser in sCase.Users)
@@ -641,6 +773,7 @@ public class CaseController : ControllerBase
             .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
+                OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
                 UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
                 UserSettings = u.Settings
@@ -669,6 +802,7 @@ public class CaseController : ControllerBase
     private class PreflightResponseDetails
     {
         public required string OrganizationId { get; init; }
+        public required Database.OrganizationSettings OrganizationSettings { get; init; }
         public long UserId { get; init; }
         public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }

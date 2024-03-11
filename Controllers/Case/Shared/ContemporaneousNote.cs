@@ -6,6 +6,7 @@ using Minio.DataModel;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
 using Index = Meilisearch.Index;
+using SharedContemporaneousNote = Server.Models.Search.SharedContemporaneousNote;
 
 namespace Server.Controllers.Case.Shared;
 
@@ -372,7 +373,7 @@ public class SharedContemporaneousNotesController : ControllerBase
             
             await index.AddDocumentsAsync(new [] 
             { 
-                new SharedDocument  {
+                new SharedContemporaneousNote  {
                     Id = contemporaneousNote.Id, 
                     CaseId = _sqids.Decode(caseId)[0], 
                     Content = content
@@ -484,7 +485,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         Index index = meiliClient.Index("shared-contemporaneous-notes");  
         
         // Search the index for the string filtering by case id and user id
-        ISearchable<SharedDocument> searchResult = await index.SearchAsync<SharedDocument>(
+        ISearchable<SharedContemporaneousNote> searchResult = await index.SearchAsync<SharedContemporaneousNote>(
             search.Query,
             new SearchQuery
             {

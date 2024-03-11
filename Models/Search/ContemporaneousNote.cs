@@ -1,6 +1,6 @@
-namespace Server.Models;
+namespace Server.Models.Search;
 
-public class Document
+public class ContemporaneousNote
 {
         public long Id { get; set; }
         public long CaseId { get; set; }
@@ -8,7 +8,7 @@ public class Document
         public string? Content { get; set; }
 }
 
-public class SharedDocument
+public class SharedContemporaneousNote
 {
         public long Id { get; set; }
         public long CaseId { get; set; }

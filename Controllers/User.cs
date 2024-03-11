@@ -1,4 +1,7 @@
-﻿namespace Server.Controllers;
+﻿using Meilisearch;
+using Index = Meilisearch.Index;
+
+namespace Server.Controllers;
 
 [Route("/user")]
 [ApiController]
@@ -24,7 +27,7 @@ public class UserController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<List<API.User>>> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "", bool sio = false)
+    public async Task<ActionResult<List<API.User>>> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "", bool sio = false,  string search = "")
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -40,6 +43,7 @@ public class UserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
 
         // Log the user's organization ID and the user's ID
@@ -59,8 +63,94 @@ public class UserController : ControllerBase
         // Set pagination headers
         HttpContext.Response.Headers.Add("X-Page", page.ToString());
         HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
-        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.User.Count(u => u.Organization.Id == organizationId).ToString());
 
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // Create Meilisearch Client
+            MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        
+            // Try getting the users index
+            try
+            {
+                await meiliClient.GetIndexAsync("users");
+            }
+            // Catch Meilisearch exceptions
+            catch  (MeilisearchApiError e)
+            {
+                // Don't have an index to search so returning all users in a organization
+                if (e.Code == "index_not_found")
+                {
+                    return _dbContext.Organization
+                        .Where(o => o.Id == organizationId)
+                        .SelectMany(org => org.Users)
+                        .Skip((page - 1) * pageSize).Take(pageSize)
+                        .Include(u => u.Roles)
+                        .Select(u => new API.User
+                        {
+                            Id = _sqids.Encode(u.Id),
+                            Auth0Id = u.Auth0Id,
+                            JobTitle = u.JobTitle,
+                            GivenName = u.GivenName,
+                            LastName = u.LastName,
+                            DisplayName = u.DisplayName,
+                            EmailAddress = u.EmailAddress,
+                            ProfilePicture = u.ProfilePicture,
+                            Organization = new API.Organization
+                            {
+                                Name = u.Organization.DisplayName,
+                                DisplayName = u.Organization.DisplayName
+                            },
+                            Roles = u.Roles.Select(r => r.Name).ToList()
+                        })
+                        .ToList();
+                }
+            }
+            
+            // Get the user index
+            Index index = meiliClient.Index("users");
+        
+            // Search the index for the string
+            ISearchable<Search.User> searchResult = await index.SearchAsync<Search.User>(
+                search,
+                new SearchQuery
+                {
+                    AttributesToSearchOn = new [] {"jobTitle", "displayName", "givenName", "lastName"},
+                    AttributesToRetrieve = new [] {"id"}
+                }
+            );
+     
+            // Create a list of user Ids that contain a match 
+            List<long> userIds = searchResult.Hits.Select(u => u.Id).ToList();
+            
+            HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.User.Count(u => u.Organization.Id == organizationId && userIds.Contains(u.Id)).ToString());
+            HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.User.Count(u => u.Organization.Id == organizationId && userIds.Contains(u.Id)) + pageSize - 1 ) / pageSize ).ToString());
+            
+            return _dbContext.User
+                .Where(u => u.Organization.Id == organizationId && userIds.Contains(u.Id))
+                .Include(u => u.Roles)
+                .Include(u => u.Organization)
+                .Select(u => new API.User
+                {
+                    Id = _sqids.Encode(u.Id),
+                    Auth0Id = u.Auth0Id,
+                    JobTitle = u.JobTitle,
+                    GivenName = u.GivenName,
+                    LastName = u.LastName,
+                    DisplayName = u.DisplayName,
+                    EmailAddress = u.EmailAddress,
+                    ProfilePicture = u.ProfilePicture,
+                    Organization = new API.Organization
+                    {
+                        Name = u.Organization.DisplayName,
+                        DisplayName = u.Organization.DisplayName
+                    },
+                    Roles = u.Roles.Select(r => r.Name).ToList()
+                })
+                .ToList();
+        }
+        
+        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.User.Count(u => u.Organization.Id == organizationId).ToString());
+        
         // If SIO is set to true only return the SIO users
         if (sio)
         {
@@ -90,6 +180,7 @@ public class UserController : ControllerBase
                 })
                 .ToList();
         }
+
         // If page size is 0 then list all users
         if (pageSize == 0)
         {
@@ -361,6 +452,7 @@ public class UserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long requestingUserId = preflightResponse.Details.UserId;
         string requestingUserNameJob = preflightResponse.Details.UserNameJob;
         // Log the user's organization ID and the user's ID
@@ -560,6 +652,37 @@ public class UserController : ControllerBase
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
 
+        // Create Meilisearch Client
+        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        
+        // Try getting the users index
+        try
+        {
+            await meiliClient.GetIndexAsync("users");
+        }
+        // Catch Meilisearch exceptions
+        catch  (MeilisearchApiError e)
+        {
+            // If error code is index_not_found create the index
+            if (e.Code == "index_not_found")
+            {
+                await meiliClient.CreateIndexAsync("users", "id");
+            }
+        }
+           
+        // Get the users index
+        Index index = meiliClient.Index("users");  
+        
+        // Update Meilisearch document
+        await index.UpdateDocumentsAsync(new [] {
+            new Search.User()  {
+                Id = user.Id,
+                DisplayName = user.DisplayName,
+                GivenName = user.GivenName,
+                LastName = user.LastName,
+                JobTitle = user.JobTitle
+            }});
+        
         // Return no content
         return NoContent();
     }
@@ -589,10 +712,12 @@ public class UserController : ControllerBase
 
         // Fetch organization from the database by primary key
         Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
+       
 
         if (organization == null)
             return NotFound($"A organization with the Auth0 Organization ID `{organizationId}` can not be found!");
         
+        _dbContext.Entry(organization).Reference(o => o.Settings);
         // Create the user based on the provided values with default settings
         Database.User userModel = new()
         {
@@ -655,7 +780,37 @@ public class UserController : ControllerBase
                 UserID = userModel.Id, OrganizationID = organizationId
             });
 
-
+        // Create Meilisearch Client
+        MeilisearchClient meiliClient = new(organization.Settings.MeilisearchUrl, organization.Settings.MeilisearchApiKey);
+        
+        // Try getting the users index
+        try
+        {
+            await meiliClient.GetIndexAsync("users");
+        }
+        // Catch Meilisearch exceptions
+        catch  (MeilisearchApiError e)
+        {
+            // If error code is index_not_found create the index
+            if (e.Code == "index_not_found")
+            {
+                await meiliClient.CreateIndexAsync("users", "id");
+            }
+        }
+           
+        // Get the users index
+        Index index = meiliClient.Index("users");  
+        
+        // Update Meilisearch document
+        await index.AddDocumentsAsync(new [] {
+            new Search.User()  {
+                Id = userModel.Id,
+                DisplayName = userModel.DisplayName,
+                GivenName = userModel.GivenName,
+                LastName = userModel.LastName,
+                JobTitle = userModel.JobTitle
+            }});
+        
         return CreatedAtAction(nameof(GetUser), new { userId = userModel.Id }, userResponseObject);
     }
 
@@ -746,6 +901,7 @@ public class UserController : ControllerBase
             .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
+                OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
                 UserNameJob = $"{u.DisplayName} ({u.JobTitle})"
             }).SingleOrDefaultAsync();
@@ -773,6 +929,7 @@ public class UserController : ControllerBase
     private class PreflightResponseDetails
     {
         public required string OrganizationId { get; init; }
+        public required Database.OrganizationSettings OrganizationSettings { get; set; }
         public long UserId { get; init; }
         public required string UserNameJob { get; init; }
     }

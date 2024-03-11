@@ -1,4 +1,7 @@
-﻿namespace Server.Controllers.Case;
+﻿using Meilisearch;
+using Index = Meilisearch.Index;
+
+namespace Server.Controllers.Case;
 
 [ApiController]
 [Route("/case/{caseId}/user/{userId}")]
@@ -40,6 +43,7 @@ public class CaseUserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long requestingUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = _sqids.Decode(caseId)[0];
@@ -89,6 +93,25 @@ public class CaseUserController : ControllerBase
                 UserID = requestingUserId, OrganizationID = organizationId
             });
 
+        // Create Meilisearch Client
+        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        
+        // Get the cases index
+        Index index = meiliClient.Index("cases");  
+        
+        // Update Meilisearch document
+        await index.UpdateDocumentsAsync(new [] {
+            new Search.Case()  {
+                Id = sCase.Id,
+                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
+                DisplayId = sCase.DisplayId,
+                DisplayName = sCase.DisplayName,
+                Name = sCase.Name,
+                SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
+                SIOGivenName =  sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
+                SIOLastName =  sCase.Users.Single(cu => cu.IsSIO).User.LastName
+            }});
+        
         // Return HTTP 204 No Content 
         return NoContent();
     }
@@ -117,6 +140,7 @@ public class CaseUserController : ControllerBase
 
         // Set variables from preflight response
         string organizationId = preflightResponse.Details.OrganizationId;
+        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long requestingUserId = preflightResponse.Details.UserId;
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = _sqids.Decode(caseId)[0];
@@ -162,6 +186,25 @@ public class CaseUserController : ControllerBase
                 UserID = requestingUserId, OrganizationID = organizationId
             });
 
+         
+        // Create Meilisearch Client
+        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        
+        // Get the cases index
+        Index index = meiliClient.Index("cases");  
+        
+        // Update Meilisearch document
+        await index.UpdateDocumentsAsync(new [] {
+            new Search.Case()  {
+                Id = sCase.Id,
+                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
+                DisplayId = sCase.DisplayId,
+                DisplayName = sCase.DisplayName,
+                Name = sCase.Name,
+                SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
+                SIOGivenName =  sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
+                SIOLastName =  sCase.Users.Single(cu => cu.IsSIO).User.LastName
+            }});
         return Ok();
     }
 
@@ -189,6 +232,7 @@ public class CaseUserController : ControllerBase
             .Select(u => new PreflightResponseDetails
             {
                 OrganizationId = u.Organization.Id,
+                OrganizationSettings = u.Organization.Settings,
                 UserId = u.Id,
                 UserNameJob = $"{u.DisplayName} ({u.JobTitle})"
             }).SingleOrDefaultAsync();
@@ -216,6 +260,7 @@ public class CaseUserController : ControllerBase
     private class PreflightResponseDetails
     {
         public required string OrganizationId { get; init; }
+        public required Database.OrganizationSettings OrganizationSettings { get; init; }
         public long UserId { get; init; }
         public required string UserNameJob { get; init; }
     }
