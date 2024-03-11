@@ -411,17 +411,31 @@ public class CaseController : ControllerBase
                     UserID = userId, OrganizationID = organizationId
                 });
 
-            // Set new SIO user to true
-            sCase.Users.Single(cu => cu.User.Id == newSIO.Id).IsSIO = true;
-
-            // Log the SIO user given access
-            await _auditContext.LogAsync("Lighthouse Notes",
-                new
+            // If new sio does not already have access to the case, add them as the SIO
+            if (sCase.Users.Any(cu => cu.User.Id == newSIO.Id) == false)
+            {
+                await _dbContext.CaseUser.AddAsync(new Database.CaseUser()
                 {
-                    Action =
-                        $" `SIO {newSIO.DisplayName} ({newSIO.JobTitle})` was given access to the case `{sCase.DisplayName}` by `{userNameJob}`.",
-                    UserID = userId, OrganizationID = organizationId
+                    Case = sCase,
+                    User = newSIO,
+                    IsSIO = true
                 });
+                
+                // Log the SIO user given access
+                await _auditContext.LogAsync("Lighthouse Notes",
+                    new
+                    {
+                        Action =
+                            $" `SIO {newSIO.DisplayName} ({newSIO.JobTitle})` was given access to the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                        UserID = userId, OrganizationID = organizationId
+                    });
+            }
+            // Else the user already has access to the case so just set IsSIO to true
+            else
+            {
+                // Set new SIO user to true
+                sCase.Users.Single(cu => cu.User.Id == newSIO.Id).IsSIO = true;
+            }
         }
 
         // Save changes to the database
