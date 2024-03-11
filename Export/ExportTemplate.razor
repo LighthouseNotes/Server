@@ -3,12 +3,10 @@
 @inject ILoggerFactory LoggerFactory
 
 @* Page 1 - title, overview and users *@
-<h1 class="mud-typography mud-typography-h1 mud-typography-align-center"> Lighthouse Notes Case Export for: @Model.DisplayName </h1>
-
 <h2 class="mud-typography mud-typography-h2 mud-typography-align-center"> Case overview </h2>
 <div class="mud-grid mud-grid-spacing-xs-3 justify-start my-3 justify-center">
     <div class="mud-grid-item mud-grid-item-xs-12 mud-grid-item-sm-6 mud-grid-item-md-4 mud-grid-item-xxl-2">
-        <div class="mud-paper mud-elevation-1 mud-card" style="">
+        <div class="mud-paper mud-card" style="">
             <div class="mud-card-header">
                 <div class="mud-card-header-content">
                     <h6 class="mud-typography mud-typography-h6"> Case </h6>
@@ -26,7 +24,7 @@
     </div>
     <div class="mud-grid-item mud-grid-item-xs-12 mud-grid-item-sm-6 mud-grid-item-md-5 mud-grid-item-xxl-5">
     
-        <div class="mud-paper mud-elevation-1 mud-card" style="">
+        <div class="mud-paper mud-card" style="">
             <div class="mud-card-header">
                 <div class="mud-card-header-avatar">
                     <div class="mud-avatar mud-avatar-medium mud-avatar-square mud-avatar-filled mud-avatar-filled-default mud-elevation-0" style=""><img alt="User profile picture" src="@Model.SIO.ProfilePicture" class="mud-image object-scale-down object-center" height="45"></div></div>
@@ -46,7 +44,7 @@
 <h2 class="mud-typography mud-typography-h2 mud-typography-align-center"> Users with access to the case </h2>
 <div class="mud-grid mud-grid-spacing-xs-3 justify-start my-3">
     <div class="mud-grid-item mud-grid-item-xs-12">
-        <div class="mud-table mud-data-grid mud-xs-table mud-elevation-1" style="">
+        <div class="mud-table mud-data-grid mud-xs-table " style="">
             <div class="mud-table-container" style="" _bl_11134f7b-73ca-493b-b52b-d11e75802381="">
                 <div class="mud-drop-container">
                     <table class="mud-table-root">
@@ -54,17 +52,17 @@
                         <tr class="mud-table-row">
                             <th scope="col" class="mud-table-cell" style="" colspan="1">
                                 <span class="column-header">
-                                    <span class="sortable-column-header cursor-pointer">Display Name</span>
+                                    <span class="sortable-column-header cursor-pointer"> <b> Display Name </b></span>
                                 </span>
                             </th>
                             <th scope="col" class="mud-table-cell" style="" colspan="1">
                                 <span class="column-header">
-                                    <span class="sortable-column-header cursor-pointer">Organization</span>
+                                    <span class="sortable-column-header cursor-pointer"> <b> Organization </b></span>
                                 </span>
                             </th>
                             <th scope="col" class="mud-table-cell" style="" colspan="1">
                                 <span class="column-header">
-                                    <span class="sortable-column-header cursor-pointer">Job Title</span>
+                                    <span class="sortable-column-header cursor-pointer"> <b> Job Title </b></span>
                                 </span>
                             </th>
                         </tr>
@@ -91,7 +89,7 @@
 <div class="mud-expansion-panels">
     @foreach (API.ContemporaneousNotesExport contemporaneousNote in Model.ContemporaneousNotes)
     {
-        <div class="mud-expand-panel mud-panel-expanded mud-panel-next-expanded mud-elevation-1 mud-expand-panel-border">
+        <div class="mud-expand-panel mud-panel-expanded mud-panel-next-expanded  mud-expand-panel-border">
 
             <div class="mud-expand-panel-header">
                 <div class="mud-expand-panel-text">
@@ -107,8 +105,13 @@
                     </div>
                 </div>
             </div>
-
+        
         </div>
+        if (Model.ContemporaneousNotes.IndexOf(contemporaneousNote) + 1 != Model.ContemporaneousNotes.Count)
+        {
+            <hr class="mud-divider my-6 mud-theme-primary">
+        }
+       
     }
 </div>
 @* Page 3 - Tabs *@
@@ -116,11 +119,14 @@
 <h2 class="mud-typography mud-typography-h2 mud-typography-align-center"> Tabs </h2>
 @foreach (API.TabExport tab in Model.Tabs)
 {
-    <div class="mud-paper mud-elevation-1 mud-card">
+    <div class="mud-paper  mud-card">
         <h3 class="mud-typography mud-typography-h2 mud-typography-align-center"> @tab.Name </h3>
         @((MarkupString)tab.Content)
     </div>
-    <br/>
+    if (Model.Tabs.IndexOf(tab) + 1 != Model.Tabs.Count)
+    {
+        <hr class="mud-divider my-6 mud-theme-primary">
+    }
 }
 @* Page 3 - Shared notes *@
 <div style="page-break-before: always;"></div>
@@ -128,13 +134,13 @@
 <div class="mud-expansion-panels">
     @foreach (API.SharedContemporaneousNotesExport contemporaneousNote in Model.SharedContemporaneousNotes)
     {
-        <div class="mud-expand-panel mud-panel-expanded mud-panel-next-expanded mud-elevation-1 mud-expand-panel-border">
+        <div class="mud-expand-panel mud-panel-expanded mud-panel-next-expanded  mud-expand-panel-border">
 
             <div class="mud-expand-panel-header">
                 <div class="mud-expand-panel-text">
                     <div class="d-flex">
                         <div class="mud-avatar mud-avatar-medium mud-avatar-square mud-avatar-filled mud-avatar-filled-default mud-elevation-0">
-                           <img src="@contemporaneousNote.Creator.ProfilePicture" class="mud-image object-fill object-center" alt="User profile picture"/>
+                            <img src="@contemporaneousNote.Creator.ProfilePicture" class="mud-image object-fill object-center" alt="User profile picture"/>
                         </div>
                         <h6 class="mud-typography mud-typography-h6">
                             @contemporaneousNote.Created
@@ -154,6 +160,10 @@
             </div>
 
         </div>
+         if (Model.SharedContemporaneousNotes.IndexOf(contemporaneousNote) + 1 != Model.SharedContemporaneousNotes.Count)
+            {
+                <hr class="mud-divider my-6 mud-theme-primary">
+            }
     }
 </div>
 @* Page 4 - Shared Tabs *@
@@ -161,12 +171,15 @@
 <h2 class="mud-typography mud-typography-h2 mud-typography-align-center"> Shared Tabs </h2>
 @foreach (API.SharedTabExport tab in Model.SharedTabs)
 {
-    <div class="mud-paper mud-elevation-1 mud-card">
+    <div class="mud-paper  mud-card">
         <h3 class="mud-typography mud-typography-h2 mud-typography-align-center"> @tab.Name </h3>
         <h6 class="mud-typography mud-typography-subtitle1 mud-typography-align-center"> Created at: @tab.Created by <a class="mud-typography mud-link mud-primary-text mud-link-underline-hover mud-typography-body1 cursor-pointer"> @tab.Creator.DisplayName </a> </h6>
         @((MarkupString)tab.Content)
     </div>
-    <br/>
+    if (Model.SharedTabs.IndexOf(tab) + 1 != Model.SharedTabs.Count)
+    {
+        <hr class="mud-divider my-6 mud-theme-primary">
+    }
 }
 @code {
     [Parameter]

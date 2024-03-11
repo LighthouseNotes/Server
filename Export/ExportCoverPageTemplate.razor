@@ -1,0 +1,15 @@
+@page "/ExportCoverPageTemplate"
+@inject ILoggerFactory LoggerFactory
+
+<div class="d-flex justify-center flex-grow-1 gap-4">
+    <img src="./Export/logo.jpg" height="400px"/>
+</div>
+<br/>
+<p class="mud-typography mud-typography-h1 mud-typography-align-center"> Lighthouse Notes Case Export </p>
+<p class="mud-typography mud-typography-h6 mud-typography-align-center"> For </p>
+<p  class="mud-typography mud-typography-h1 mud-typography-align-center"> @Model.DisplayName </p>
+
+@code {
+    [Parameter]
+    public required API.Export Model { get; set; }
+}

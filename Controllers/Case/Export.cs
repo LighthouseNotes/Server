@@ -9,8 +9,11 @@ using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
 using Minio.Exceptions;
+using Server.Export;
 using Syncfusion.HtmlConverter;
 using Syncfusion.Pdf;
+using Syncfusion.Pdf.Parsing;
+
 // ReSharper disable AccessToModifiedClosure
 
 namespace Server.Controllers.Case;
@@ -757,66 +760,52 @@ public class ExportController : ControllerBase
         /////////////////////////////
         // HTML to PDF conversion //
         ///////////////////////////
-
-        // Convert blazor page to HTML
-        string html = new ComponentRenderer<ExportTemplate>()
+        // Convert export cover template blazor page to HTML
+        string coverHTML = new ComponentRenderer<ExportCoverPageTemplate>()
             .Set(c => c.Model, model)
             .AddService(_logger)
             .Render();
-
-        // Initialize HTML to PDF converter
-        HtmlToPdfConverter htmlConverter = new();
-
-        // Set temp location
-        string baseUrl = Path.GetTempPath();
-
-        //Initialize Blink Converter Settings
-        BlinkConverterSettings blinkConverterSettings = new();
-        blinkConverterSettings.CommandLineArguments.Add("--no-sandbox");
-        blinkConverterSettings.CommandLineArguments.Add("--disable-setuid-sandbox");
-
-        // If running on Windows then blink binaries are at %SystemDrive%}/Program Files (x86)/Syncfusion/HTMLConverter/x.x.x/BlinkBinaries/
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            // Get Syncfusion version
-            string? version = Assembly.GetAssembly(typeof(HtmlToPdfConverter))?.GetName().Version?.ToString(3);
-            
-            // If version is null then throw an exception
-            if (version == null)
-            {
-                throw new InvalidOperationException("Unable to determine the Syncfusion version!");
-            }
-            
-            // Set the blink path
-            blinkConverterSettings.BlinkPath = @$"{Path.GetPathRoot(Environment.SystemDirectory)}/Program Files (x86)/Syncfusion/HTMLConverter/{version}/BlinkBinaries/";
-        }
-        // Else BlinkBinaries are in the executing directory 
-        else
-        {
-            blinkConverterSettings.BlinkPath = "BlinkBinaries/";
-        }
         
-        // Read MudBlazor css file and set custom CSS
-        using StreamReader streamReader = new(@"MudBlazor.min.css",
-            Encoding.UTF8);
-        string mudBlazorCSS = await streamReader.ReadToEndAsync();
-        blinkConverterSettings.Css = mudBlazorCSS;
-
-        // Set HTML converter settings
-        htmlConverter.ConverterSettings = blinkConverterSettings;
-
-        // Convert URL to PDF
-        PdfDocument document = htmlConverter.Convert(html, baseUrl);
-
-        // Create memory stream to store the PDF
-        MemoryStream pdfMemoryStream = new();
-
-        // Save and close the PDF document.
-        document.Save(pdfMemoryStream);
-        document.Close(true);
-        pdfMemoryStream.Flush();
-        pdfMemoryStream.Position = 0;
-
+        // Convert export template blazor page to HTML
+        string contentHTML = new ComponentRenderer<ExportTemplate>()
+            .Set(c => c.Model, model)
+            .AddService(_logger)
+            .Render();
+        
+        // Use export helpers
+        Helpers helpers = new();
+        
+        // Create cover page PDF and load it
+        MemoryStream coverPDFStream = await helpers.GeneratePDFCoverPage(coverHTML, model.DisplayName);
+        PdfLoadedDocument coverPDF = new(coverPDFStream);
+        
+        // Create content PDF and load it
+        MemoryStream contentPDFStream = await  helpers.GeneratePDF(contentHTML, model.DisplayName, timeZone.DisplayName);
+        PdfLoadedDocument contentPDF = new(contentPDFStream);
+        
+        // Create final PDF document
+        PdfDocument finalDocument = new();
+        
+        // Add cover page
+        finalDocument.ImportPage(coverPDF, 0);
+        
+        // Add all content pages
+        finalDocument.ImportPageRange(contentPDF, 0, contentPDF.PageCount - 1);
+        
+        // Create memory stream to store the final pdf in
+        MemoryStream finalMemoryStream = new();
+        
+        // Save the final pdf to the memory stream
+        finalDocument.Save(finalMemoryStream);
+        finalDocument.Close(true);
+        
+        // Flush the memory stream and set position to 0
+        finalMemoryStream.Flush(); 
+        finalMemoryStream.Position = 0;
+        
+          ////////////////////
+         // Save PDF to s3 //
+        ////////////////////
         // Create a variable for object path with auth0| removed 
         string pdfObjectPath = $"cases/{caseId}/{userId}/export/Lighthouse Notes Export {sCase.DisplayName}.pdf";
 
@@ -833,8 +822,8 @@ public class ExportController : ControllerBase
         await minio.PutObjectAsync(new PutObjectArgs()
             .WithBucket(organizationSettings.S3BucketName)
             .WithObject(pdfObjectPath)
-            .WithStreamData(pdfMemoryStream)
-            .WithObjectSize(pdfMemoryStream.Length)
+            .WithStreamData(finalMemoryStream)
+            .WithObjectSize(finalMemoryStream.Length)
             .WithContentType("application/octet-stream")
         );
 
