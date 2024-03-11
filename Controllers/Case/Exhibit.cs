@@ -118,7 +118,7 @@ public class ExhibitController : ControllerBase
                 DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
                 WhereSeizedProduced = e.WhereSeizedProduced,
                 SeizedBy = e.SeizedBy
-            }).OrderBy(e => e.GetType().GetProperty(sort[0]).GetValue(e)).Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            }).OrderBy(e => e.GetType().GetProperty(sort[0])?.GetValue(e)).Skip((page - 1) * pageSize).Take(pageSize).ToList();
         }
         
         if(sort[1] == "desc")
@@ -132,7 +132,7 @@ public class ExhibitController : ControllerBase
                 DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
                 WhereSeizedProduced = e.WhereSeizedProduced,
                 SeizedBy = e.SeizedBy
-            }).OrderByDescending(e => e.GetType().GetProperty(sort[0]).GetValue(e)).Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            }).OrderByDescending(e => e.GetType().GetProperty(sort[0])?.GetValue(e)).Skip((page - 1) * pageSize).Take(pageSize).ToList();
         }
 
         return BadRequest($"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
