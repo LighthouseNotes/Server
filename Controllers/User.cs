@@ -717,7 +717,9 @@ public class UserController : ControllerBase
         if (organization == null)
             return NotFound($"A organization with the Auth0 Organization ID `{organizationId}` can not be found!");
         
-        _dbContext.Entry(organization).Reference(o => o.Settings);
+        // Load organization settings
+        await _dbContext.Entry(organization).Reference(o => o.Settings).LoadAsync();
+        
         // Create the user based on the provided values with default settings
         Database.User userModel = new()
         {
