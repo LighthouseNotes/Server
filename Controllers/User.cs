@@ -192,6 +192,7 @@ public class UserController : ControllerBase
                 return _dbContext.Organization
                     .Where(o => o.Id == organizationId)
                     .SelectMany(org => org.Users)
+                    .OrderBy(u => u.LastName)
                     .Include(u => u.Roles)
                     .Select(u => new API.User
                     {
@@ -280,6 +281,7 @@ public class UserController : ControllerBase
             return _dbContext.Organization
                 .Where(o => o.Id == organizationId)
                 .SelectMany(org => org.Users)
+                .OrderBy(u => u.LastName)
                 .Skip((page - 1) * pageSize).Take(pageSize)
                 .Include(u => u.Roles)
                 .Select(u => new API.User
