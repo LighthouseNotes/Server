@@ -9,11 +9,11 @@ using Syncfusion.Pdf.HtmlToPdf;
 
 namespace Server.Export;
 
-public class Helpers
+public class PDFFuctions
 {
     public async Task<MemoryStream> GeneratePDFCoverPage(string html, string caseDisplayName)
     {
-                // Initialize HTML to PDF converter
+        // Initialize HTML to PDF converter
         HtmlToPdfConverter htmlConverter = new();
 
         // Set temp location
@@ -161,7 +161,7 @@ public class Helpers
         return inputPDFMemoryStream;
     }
 
-    public PdfPageTemplateElement Header(string displayName,float pageWidth)
+    private PdfPageTemplateElement Header(string displayName,float pageWidth)
     {
         // Header //
         //Create PDF page template element for header with bounds.
@@ -182,7 +182,7 @@ public class Helpers
         return header;
     }
 
-    public PdfPageTemplateElement Footer(string timeZone, float pageWidth)
+    private PdfPageTemplateElement Footer(string timeZone, float pageWidth)
     {
         // Footer //
         //Create PDF page template element for footer with bounds.

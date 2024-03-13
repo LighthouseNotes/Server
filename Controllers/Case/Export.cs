@@ -1,16 +1,7 @@
-﻿using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
-using System.Web;
-using BlazorTemplater;
-using HtmlAgilityPack;
+﻿using BlazorTemplater;
 using Minio;
-using Minio.DataModel;
 using Minio.DataModel.Args;
-using Minio.Exceptions;
 using Server.Export;
-using Syncfusion.HtmlConverter;
 using Syncfusion.Pdf;
 using Syncfusion.Pdf.Parsing;
 
@@ -67,12 +58,7 @@ public class ExportController : ControllerBase
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
         long rawCaseId = _sqids.Decode(caseId)[0];
-
-        // Log the user's organization ID and the user's ID
-        // IAuditScope auditScope = this.GetCurrentAuditScope();
-        // auditScope.SetCustomField("OrganizationID", organizationId);
-        // auditScope.SetCustomField("UserID", userId);
-
+        
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -103,6 +89,7 @@ public class ExportController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
+        
         // Get case user from the database including the required entities 
         Database.CaseUser? caseUser = await _dbContext.CaseUser
             .Where(cu => cu.Case.Id == rawCaseId && cu.User.Id == rawUserId)
@@ -114,6 +101,7 @@ public class ExportController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
+        
         // Create minio client
         IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -162,145 +150,20 @@ public class ExportController : ControllerBase
             }).ToList()
         };
 
+        // Create functions class 
+        Functions functions = new(_sqids, caseId, userId, sCase, caseUser, organizationSettings, timeZone);
+        
         /////////////////////////
         // Personal Comp Notes //
         /////////////////////////
         foreach (Database.ContemporaneousNote contemporaneousNote in caseUser.ContemporaneousNotes)
         {
-            // Variables 
-            MemoryStream memoryStream = new();
-            using MD5 md5 = MD5.Create();
-            using SHA256 sha256 = SHA256.Create();
 
-            // Create a variable for object path with auth0| removed 
-            string objectPath = $"cases/{caseId}/{userId}/contemporaneous-notes/{_sqids.Encode(contemporaneousNote.Id)}/note.txt";
-
-            // Fetch object metadata
-            ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Fetch object hash from database
-            Database.Hash? objectHashes = caseUser.Hashes.SingleOrDefault(h =>
-                h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-            // If object hash is null then a hash does not exist so return HTTP 500 error
-            if (objectHashes == null)
-                return Problem("Unable to find hash values for the requested image!");
-
-            // Get object and copy file contents to stream
-            await minio.GetObjectAsync(new GetObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-                .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-            );
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Generate MD5 and SHA256 hash
-            byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
-            byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-            // Check MD5 hash generated matches hash in the database
-            if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                return Problem("MD5 hash verification failed!");
-
-            // Check SHA256 hash generated matches hash in the database
-            if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                return Problem("SHA256 hash verification failed!");
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Read file contents to string
-            using StreamReader sr = new(memoryStream);
-            string content = await sr.ReadToEndAsync();
-
-            // Create HTML document
-            HtmlDocument htmlDoc = new();
-
-            // Load value into HTML
-            htmlDoc.LoadHtml(content);
-
-            // If content contains images
-            if (htmlDoc.DocumentNode.SelectNodes("//img") != null)
-                // For each image that starts with .path/
-                foreach (HtmlNode img in htmlDoc.DocumentNode.SelectNodes("//img")
-                             .Where(u => u.Attributes["src"].Value.Contains(".path/")))
-                {
-                    // Create variable with file name
-                    string fileName = img.Attributes["src"].Value.Replace(".path/", "");
-
-                    // Get presigned s3 url and update image src 
-                    objectPath =
-                        $"cases/{caseId}/{userId}/contemporaneous-notes/images/{HttpUtility.UrlDecode(fileName)}";
-
-                    // Fetch object metadata
-                    try
-                    {
-                        objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                            .WithBucket(organizationSettings.S3BucketName)
-                            .WithObject(objectPath)
-                        );
-                    }
-                    // If object does not exist return a HTTP 404 error
-                    catch (ObjectNotFoundException)
-                    {
-                        return NotFound($"A object with the path `{objectPath}` can not be found in the S3 Bucket!");
-                    }
-
-                    // Fetch object hash from database
-                    objectHashes = caseUser.Hashes.SingleOrDefault(h =>
-                        h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-                    // If object hash is null then a hash does not exist so return a HTTP 500 error
-                    if (objectHashes == null)
-                        return Problem("Unable to find hash values for the requested image!");
-
-                    // Create memory stream to store file contents
-                    memoryStream = new MemoryStream();
-
-                    // Get object and copy file contents to stream
-                    await minio.GetObjectAsync(new GetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-                    );
-
-                    // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-                    memoryStream.Position = 0;
-
-                    // Create MD5 and SHA256
-                    // Generate MD5 and SHA256 hash
-                    md5Hash = await md5.ComputeHashAsync(memoryStream);
-                    sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-                    // Check generated MD5 hash matches the hash in the database
-                    if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Check generated SHA256 hash matches the hash in the database
-                    if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Fetch presigned url for object  
-                    string presignedS3Url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithExpiry(3600)
-                    );
-
-                    img.Attributes["src"].Value = presignedS3Url;
-                }
-
+            // Get contemporaneous note
+            API.ContemporaneousNotesExport contemporaneousNoteObject = await functions.GetContemporaneousNote(contemporaneousNote);
+            
             // Add contemporaneous note to model 
-            model.ContemporaneousNotes.Add(new API.ContemporaneousNotesExport
-            {
-                Content = htmlDoc.DocumentNode.OuterHtml,
-                DateTime = TimeZoneInfo.ConvertTimeFromUtc(contemporaneousNote.Created, timeZone)
-            });
+            model.ContemporaneousNotes.Add(contemporaneousNoteObject);
         }
 
         ///////////
@@ -309,139 +172,12 @@ public class ExportController : ControllerBase
         // Loop through each tab and add to model
         foreach (Database.Tab tab in caseUser.Tabs)
         {
-            // Variables 
-            MemoryStream memoryStream = new();
-            using MD5 md5 = MD5.Create();
-            using SHA256 sha256 = SHA256.Create();
 
-            // Create variable for object path with auth0| removed
-            string objectPath = $"cases/{caseId}/{userId}/tabs/{_sqids.Encode(tab.Id)}/content.txt";
-
-            // Get object metadata
-            ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Fetch object hash from database
-            Database.Hash? objectHashes = caseUser.Hashes.SingleOrDefault(h =>
-                h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-            // If object hash is null then a hash does not exist so return HTTP 500 error
-            if (objectHashes == null)
-                return Problem($"Unable to find hash values for the tab with the ID `{tab.Id}`!");
-
-            // Get object and copy file contents to stream
-            await minio.GetObjectAsync(new GetObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-                .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-            );
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Generate MD5 and SHA256 hash
-            byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
-            byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-            // Check MD5 hash generated matches hash in the database
-            if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                return Problem("MD5 hash verification failed!");
-
-            // Check SHA256 hash generated matches hash in the database
-            if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                return Problem("SHA256 hash verification failed!");
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Read file contents to string
-            using StreamReader sr = new(memoryStream);
-            string content = await sr.ReadToEndAsync();
-
-            // Create HTML document
-            HtmlDocument htmlDoc = new();
-
-            // Load value into HTML
-            htmlDoc.LoadHtml(content);
-
-            // If content contains images
-            if (htmlDoc.DocumentNode.SelectNodes("//img") != null)
-                // For each image that starts with .path/
-                foreach (HtmlNode img in htmlDoc.DocumentNode.SelectNodes("//img")
-                             .Where(u => u.Attributes["src"].Value.Contains(".path/")))
-                {
-                    // Create variable with file name
-                    string fileName = img.Attributes["src"].Value.Replace(".path/", "");
-
-                    // Get presigned s3 url and update image src 
-                    objectPath = $"cases/{caseId}/{userId}/tabs/images/{HttpUtility.UrlDecode(fileName)}";
-
-                    // Fetch object metadata
-                    try
-                    {
-                        objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                            .WithBucket(organizationSettings.S3BucketName)
-                            .WithObject(objectPath)
-                        );
-                    }
-                    // If object does not exist return a HTTP 404 error
-                    catch (ObjectNotFoundException)
-                    {
-                        return NotFound($"A object with the path `{objectPath}` can not be found in the S3 Bucket!");
-                    }
-
-                    // Fetch object hash from database
-                    objectHashes = caseUser.Hashes.SingleOrDefault(h =>
-                        h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-                    // If object hash is null then a hash does not exist so return a HTTP 500 error
-                    if (objectHashes == null)
-                        return Problem("Unable to find hash values for the requested image!");
-
-                    // Create memory stream to store file contents
-                    memoryStream = new MemoryStream();
-
-                    // Get object and copy file contents to stream
-                    await minio.GetObjectAsync(new GetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-                    );
-
-                    // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-                    memoryStream.Position = 0;
-
-                    // Create MD5 and SHA256
-                    // Generate MD5 and SHA256 hash
-                    md5Hash = await md5.ComputeHashAsync(memoryStream);
-                    sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-                    // Check generated MD5 hash matches the hash in the database
-                    if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Check generated SHA256 hash matches the hash in the database
-                    if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Fetch presigned url for object  
-                    string presignedS3Url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithExpiry(3600)
-                    );
-
-                    img.Attributes["src"].Value = presignedS3Url;
-                }
-
-            // Add tab to model
-            model.Tabs.Add(new API.TabExport
-            {
-                Name = tab.Name,
-                Content = htmlDoc.DocumentNode.OuterHtml
-            });
+            // Get tab
+            API.TabExport tabObject = await functions.GetTab(tab);
+            
+            // Add tab to model 
+            model.Tabs.Add(tabObject);
         }
 
         ////////////////////////
@@ -449,155 +185,11 @@ public class ExportController : ControllerBase
         //////////////////////
         foreach (Database.SharedContemporaneousNote contemporaneousNote in sCase.SharedContemporaneousNotes)
         {
-            // Variables 
-            MemoryStream memoryStream = new();
-            using MD5 md5 = MD5.Create();
-            using SHA256 sha256 = SHA256.Create();
-
-            // Create a variable for object path with auth0| removed 
-            string objectPath = $"cases/{caseId}/shared/contemporaneous-notes/{_sqids.Encode(contemporaneousNote.Id)}/note.txt";
-
-            // Fetch object metadata
-            ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Fetch object hash from database
-            Database.SharedHash? objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
-                h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-            // If object hash is null then a hash does not exist so return HTTP 500 error
-            if (objectHashes == null)
-                return Problem("Unable to find hash values for the requested image!");
-
-            // Get object and copy file contents to stream
-            await minio.GetObjectAsync(new GetObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-                .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-            );
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Generate MD5 and SHA256 hash
-            byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
-            byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-            // Check MD5 hash generated matches hash in the database
-            if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                return Problem("MD5 hash verification failed!");
-
-            // Check SHA256 hash generated matches hash in the database
-            if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                return Problem("SHA256 hash verification failed!");
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Read file contents to string
-            using StreamReader sr = new(memoryStream);
-            string content = await sr.ReadToEndAsync();
-
-            // Create HTML document
-            HtmlDocument htmlDoc = new();
-
-            // Load value into HTML
-            htmlDoc.LoadHtml(content);
-
-            // If content contains images
-            if (htmlDoc.DocumentNode.SelectNodes("//img") != null)
-                // For each image that starts with .path/
-                foreach (HtmlNode img in htmlDoc.DocumentNode.SelectNodes("//img")
-                             .Where(u => u.Attributes["src"].Value.Contains(".path/")))
-                {
-                    // Create variable with file name
-                    string fileName = img.Attributes["src"].Value.Replace(".path/", "");
-
-                    // Get presigned s3 url and update image src 
-                    objectPath =
-                        $"cases/{caseId}/shared/contemporaneous-notes/images/{HttpUtility.UrlDecode(fileName)}";
-
-                    // Fetch object metadata
-                    try
-                    {
-                        objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                            .WithBucket(organizationSettings.S3BucketName)
-                            .WithObject(objectPath)
-                        );
-                    }
-                    // If object does not exist return a HTTP 404 error
-                    catch (ObjectNotFoundException)
-                    {
-                        return NotFound($"A object with the path `{objectPath}` can not be found in the S3 Bucket!");
-                    }
-
-                    // Fetch object hash from database
-                    objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
-                        h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-                    // If object hash is null then a hash does not exist so return a HTTP 500 error
-                    if (objectHashes == null)
-                        return Problem("Unable to find hash values for the requested image!");
-
-                    // Create memory stream to store file contents
-                    memoryStream = new MemoryStream();
-
-                    // Get object and copy file contents to stream
-                    await minio.GetObjectAsync(new GetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-                    );
-
-                    // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-                    memoryStream.Position = 0;
-
-                    // Create MD5 and SHA256
-                    // Generate MD5 and SHA256 hash
-                    md5Hash = await md5.ComputeHashAsync(memoryStream);
-                    sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-                    // Check generated MD5 hash matches the hash in the database
-                    if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Check generated SHA256 hash matches the hash in the database
-                    if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Fetch presigned url for object  
-                    string presignedS3Url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithExpiry(3600)
-                    );
-
-                    img.Attributes["src"].Value = presignedS3Url;
-                }
-
-            // Add contemporaneous note to model 
-            model.SharedContemporaneousNotes.Add(new API.SharedContemporaneousNotesExport
-            {
-                Content = htmlDoc.DocumentNode.OuterHtml,
-                Created = TimeZoneInfo.ConvertTimeFromUtc(contemporaneousNote.Created, timeZone),
-                Creator = new API.User
-                {
-                    Id = _sqids.Encode(contemporaneousNote.Creator.Id),  Auth0Id = contemporaneousNote.Creator.Auth0Id,
-                    JobTitle = contemporaneousNote.Creator.JobTitle,
-                    DisplayName = contemporaneousNote.Creator.DisplayName,
-                    GivenName = contemporaneousNote.Creator.GivenName, LastName = contemporaneousNote.Creator.LastName,
-                    EmailAddress = contemporaneousNote.Creator.EmailAddress,
-                    ProfilePicture = contemporaneousNote.Creator.ProfilePicture,
-                    Organization = new API.Organization
-                    {
-                        Name = contemporaneousNote.Creator.Organization.DisplayName,
-                        DisplayName = contemporaneousNote.Creator.Organization.DisplayName
-                    },
-                    Roles = contemporaneousNote.Creator.Roles.Select(r => r.Name).ToList()
-                }
-            });
+            // Get shared contemporaneous note
+            API.SharedContemporaneousNotesExport contemporaneousNoteObject = await functions.GetSharedContemporaneousNote(contemporaneousNote);
+            
+            // Add shared contemporaneous note to model 
+            model.SharedContemporaneousNotes.Add(contemporaneousNoteObject);
         }
 
         //////////////////
@@ -606,156 +198,13 @@ public class ExportController : ControllerBase
         // Loop through each tab and add to model
         foreach (Database.SharedTab tab in sCase.SharedTabs)
         {
-            // Variables 
-            MemoryStream memoryStream = new();
-            using MD5 md5 = MD5.Create();
-            using SHA256 sha256 = SHA256.Create();
 
-            // Create variable for object path with auth0| removed
-            string objectPath = $"cases/{caseId}/shared/tabs/{_sqids.Encode(tab.Id)}/content.txt";
-
-            // Get object metadata
-            ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-            );
-
-            // Fetch object hash from database
-            Database.SharedHash? objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
-                h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-            // If object hash is null then a hash does not exist so return HTTP 500 error
-            if (objectHashes == null)
-                return Problem($"Unable to find hash values for the tab with the ID `{tab.Id}`!");
-
-            // Get object and copy file contents to stream
-            await minio.GetObjectAsync(new GetObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
-                .WithObject(objectPath)
-                .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-            );
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Generate MD5 and SHA256 hash
-            byte[] md5Hash = await md5.ComputeHashAsync(memoryStream);
-            byte[] sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-            // Check MD5 hash generated matches hash in the database
-            if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                return Problem("MD5 hash verification failed!");
-
-            // Check SHA256 hash generated matches hash in the database
-            if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                return Problem("SHA256 hash verification failed!");
-
-            // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-            memoryStream.Position = 0;
-
-            // Read file contents to string
-            using StreamReader sr = new(memoryStream);
-            string content = await sr.ReadToEndAsync();
-
-            // Create HTML document
-            HtmlDocument htmlDoc = new();
-
-            // Load value into HTML
-            htmlDoc.LoadHtml(content);
-
-            // If content contains images
-            if (htmlDoc.DocumentNode.SelectNodes("//img") != null)
-                // For each image that starts with .path/
-                foreach (HtmlNode img in htmlDoc.DocumentNode.SelectNodes("//img")
-                             .Where(u => u.Attributes["src"].Value.Contains(".path/")))
-                {
-                    // Create variable with file name
-                    string fileName = img.Attributes["src"].Value.Replace(".path/", "");
-
-                    // Get presigned s3 url and update image src 
-                    objectPath = $"cases/{caseId}/shared/tabs/images/{HttpUtility.UrlDecode(fileName)}";
-
-                    // Fetch object metadata
-                    try
-                    {
-                        objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                            .WithBucket(organizationSettings.S3BucketName)
-                            .WithObject(objectPath)
-                        );
-                    }
-                    // If object does not exist return a HTTP 404 error
-                    catch (ObjectNotFoundException)
-                    {
-                        return NotFound($"A object with the path `{objectPath}` can not be found in the S3 Bucket!");
-                    }
-
-                    // Fetch object hash from database
-                    objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
-                        h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
-
-                    // If object hash is null then a hash does not exist so return a HTTP 500 error
-                    if (objectHashes == null)
-                        return Problem("Unable to find hash values for the requested image!");
-
-                    // Create memory stream to store file contents
-                    memoryStream = new MemoryStream();
-
-                    // Get object and copy file contents to stream
-                    await minio.GetObjectAsync(new GetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
-                    );
-
-                    // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
-                    memoryStream.Position = 0;
-
-                    // Create MD5 and SHA256
-                    // Generate MD5 and SHA256 hash
-                    md5Hash = await md5.ComputeHashAsync(memoryStream);
-                    sha256Hash = await sha256.ComputeHashAsync(memoryStream);
-
-                    // Check generated MD5 hash matches the hash in the database
-                    if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Check generated SHA256 hash matches the hash in the database
-                    if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-                        return Problem($"MD5 hash verification failed for: `{objectPath}`!");
-
-                    // Fetch presigned url for object  
-                    string presignedS3Url = await minio.PresignedGetObjectAsync(new PresignedGetObjectArgs()
-                        .WithBucket(organizationSettings.S3BucketName)
-                        .WithObject(objectPath)
-                        .WithExpiry(3600)
-                    );
-
-                    img.Attributes["src"].Value = presignedS3Url;
-                }
-
-            // Add tab to model
-            model.SharedTabs.Add(new API.SharedTabExport
-            {
-                Name = tab.Name,
-                Content = htmlDoc.DocumentNode.OuterHtml,
-                Created = TimeZoneInfo.ConvertTimeFromUtc(tab.Created, timeZone),
-                Creator = new API.User
-                {
-                    Id = _sqids.Encode(tab.Creator.Id), Auth0Id = tab.Creator.Auth0Id,
-                    JobTitle = tab.Creator.JobTitle,
-                    DisplayName = tab.Creator.DisplayName,
-                    GivenName = tab.Creator.GivenName, LastName = tab.Creator.LastName,
-                    EmailAddress = tab.Creator.EmailAddress,
-                    ProfilePicture = tab.Creator.ProfilePicture,
-                    Organization = new API.Organization
-                    {
-                        Name = tab.Creator.Organization.DisplayName, DisplayName = tab.Creator.Organization.DisplayName
-                    },
-                    Roles = tab.Creator.Roles.Select(r => r.Name).ToList()
-                }
-            });
+            // Get shared tab
+            API.SharedTabExport tabObject = await functions.GetSharedTab(tab);
+            
+            // Add shared tab to model 
+            model.SharedTabs.Add(tabObject);
         }
-
 
         /////////////////////////////
         // HTML to PDF conversion //
@@ -773,14 +222,14 @@ public class ExportController : ControllerBase
             .Render();
         
         // Use export helpers
-        Helpers helpers = new();
+        PDFFuctions pdfFuctions = new();
         
         // Create cover page PDF and load it
-        MemoryStream coverPDFStream = await helpers.GeneratePDFCoverPage(coverHTML, model.DisplayName);
+        MemoryStream coverPDFStream = await pdfFuctions.GeneratePDFCoverPage(coverHTML, model.DisplayName);
         PdfLoadedDocument coverPDF = new(coverPDFStream);
         
         // Create content PDF and load it
-        MemoryStream contentPDFStream = await  helpers.GeneratePDF(contentHTML, model.DisplayName, timeZone.DisplayName);
+        MemoryStream contentPDFStream = await  pdfFuctions.GeneratePDF(contentHTML, model.DisplayName, timeZone.DisplayName);
         PdfLoadedDocument contentPDF = new(contentPDFStream);
         
         // Create final PDF document
