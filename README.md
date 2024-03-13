@@ -1,8 +1,44 @@
-# Server
+<div align="center">
+    <img src="https://img.shields.io/badge/.NET-5C2D91?style=for-the-badge&logo=.net&logoColor=white">
+    <img src="https://img.shields.io/github/languages/top/lighthousenotes/server?style=for-the-badge">
+    <img src="https://img.shields.io/github/v/release/lighthousenotes/server?style=for-the-badge">
+    <img src="https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white"
+</div>
+<br />
+<div align="center">
+  <a href="https://github.com/lighthousenotes/server">
+    <img src=".images/logo.jpg" alt="Logo" width="80" height="80">
+  </a>
+</div>
+<h2 align="center"> Lighthouse Notes API server </h2>
+<p align="center">
+    Lighthouse Notes is a source available digital forensics note taking application
+    <br>
+    <a href="https://github.com/lighthousenotes/server/issues">Report Bug</a>
+    ·
+    <a href="https://github.com/lighthousenotes/server/discussions">Request Feature</a>
+    ·
+    <a href="https://github.com/lighthousenotes/server/discussions"> Get Support </a>
+</p>
 
-Lighthouse Notes API server
+## About
 
-Lighthouse Notes is a source available digital forensics note taking application
+Lighthouse is a university dissertation project which implements a source available digital forensics note taking application. With a number of features:
+
+- Authentication / Authorization
+- User management
+- Case management
+- Basic exhibit management 
+- Timestamped contemporaneous notes
+- Custom tabs
+- Image / Picture uploads
+- Exhibit and user tagging
+- MD5 and SHA256 hashing
+- Storage of notes, tabs and images in a S3 bucket (encrypted using SSE-KMS)
+- Localization settings
+- Audit log
+
+This repository holds the source code and builds for the API server part of the application. 
 
 ## References
 
