@@ -2,12 +2,13 @@
     <img src="https://img.shields.io/badge/.NET-5C2D91?style=for-the-badge&logo=.net&logoColor=white">
     <img src="https://img.shields.io/github/languages/top/lighthousenotes/server?style=for-the-badge">
     <img src="https://img.shields.io/github/v/release/lighthousenotes/server?style=for-the-badge">
-    <img src="https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white"
+    <img src="https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white">
+    <img src="https://img.shields.io/codeclimate/maintainability/LighthouseNotes/Server?style=for-the-badge">
 </div>
 <br />
 <div align="center">
   <a href="https://github.com/lighthousenotes/server">
-    <img src=".images/logo.jpg" alt="Logo" width="80" height="80">
+    <img src=".images/logo.jpg" alt="Logo" width="200" height="200">
   </a>
 </div>
 <h2 align="center"> Lighthouse Notes API server </h2>
@@ -23,7 +24,7 @@
 
 ## About
 
-Lighthouse is a university dissertation project which implements a source available digital forensics note taking application. With a number of features:
+Lighthouse is a university dissertation project which implements a source available digital forensics note taking application. With the following features:
 
 - Authentication / Authorization
 - User management
