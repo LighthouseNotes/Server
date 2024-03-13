@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Formatters;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 
@@ -66,10 +67,10 @@ builder.Services.AddCors(options =>
 // Add database connection
 builder.Services.AddDbContext<DatabaseContext>(options =>
 {
-    // Get connection string for database from appsettings.json, if it is null throw invalid operation exception 
+    // Get connection string for database from appsettings.json, if it is null throw invalid operation exception and use query splitting 
     options.UseNpgsql(builder.Configuration.GetConnectionString("DatabaseContext") ??
                       throw new InvalidOperationException(
-                          "Connection string 'DatabaseContext' not found in appssettings.json"));
+                          "Connection string 'DatabaseContext' not found in appssettings.json"), o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
 
     // If environment is development enable sensitive data logging
     if (builder.Environment.IsDevelopment())
