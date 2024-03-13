@@ -69,7 +69,7 @@ public class SharedTabsController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -141,7 +141,7 @@ public class SharedTabsController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Fetch tab from the database
         Database.SharedTab? tab = await _dbContext.SharedTab
             .Where(st => st.Id == rawTabId && st.Case == sCase)
@@ -227,7 +227,7 @@ public class SharedTabsController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Fetch the creator user from the database 
         Database.User user = await _dbContext.User
             .Include(user => user.Roles)
@@ -329,7 +329,7 @@ public class SharedTabsController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Fetch the tab from the database
         Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == rawTabId);
 
@@ -371,7 +371,8 @@ public class SharedTabsController : ControllerBase
         catch (ObjectNotFoundException)
         {
             return Problem(
-                $"Can not find the S3 object for the shared tab with the ID `{tabId}` at the following path `{objectPath}`.", title: "Can not find the S3 object for the shared tab!");
+                $"Can not find the S3 object for the shared tab with the ID `{tabId}` at the following path `{objectPath}`.",
+                title: "Can not find the S3 object for the shared tab!");
         }
 
         // Fetch object hash from database
@@ -380,7 +381,8 @@ public class SharedTabsController : ControllerBase
 
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
-            return Problem($"Unable to find hash values for the shared tab with the ID `{tabId}`!", title:"Unable to find hash values for the shared tab!");
+            return Problem($"Unable to find hash values for the shared tab with the ID `{tabId}`!",
+                title: "Unable to find hash values for the shared tab!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -405,11 +407,15 @@ public class SharedTabsController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for the shared tab with the ID `{tabId}` at the path `{objectPath}`!", title: "MD5 hash verification failed!");
+            return Problem(
+                $"MD5 hash verification failed for the shared tab with the ID `{tabId}` at the path `{objectPath}`!",
+                title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"SHA256 hash verification failed for the shared tab with the ID `{tabId}` at the path `{objectPath}`!", title: "SHA256 hash verification failed!");
+            return Problem(
+                $"SHA256 hash verification failed for the shared tab with the ID `{tabId}` at the path `{objectPath}`!",
+                title: "SHA256 hash verification failed!");
 
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
@@ -444,7 +450,7 @@ public class SharedTabsController : ControllerBase
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = _sqids.Decode(caseId)[0];
         long rawTabId = _sqids.Decode(tabId)[0];
-        
+
         // Log the user's organization ID and the user's ID
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
@@ -460,7 +466,7 @@ public class SharedTabsController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Fetch tab from the database
         Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == rawTabId);
 

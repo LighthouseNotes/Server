@@ -9,7 +9,7 @@ using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 
 // Version and copyright message
-Console.ForegroundColor = ConsoleColor.Cyan; 
+Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine("Lighthouse Notes Server");
 Console.WriteLine(Assembly.GetEntryAssembly()!.GetName().Version?.ToString(3));
 Console.WriteLine();

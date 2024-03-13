@@ -27,7 +27,8 @@ public class UserController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<List<API.User>>> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "", bool sio = false,  string search = "")
+    public async Task<ActionResult<List<API.User>>> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10,
+        [FromQuery(Name = "sort")] string rawSort = "", bool sio = false, string search = "")
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -50,16 +51,13 @@ public class UserController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
-        
+
         // Create sort list
         List<string>? sortList = null;
-        
+
         // If raw sort is specified set sort list
-        if (!string.IsNullOrWhiteSpace(rawSort))
-        {
-            sortList = rawSort.Split(',').ToList();
-        }
-        
+        if (!string.IsNullOrWhiteSpace(rawSort)) sortList = rawSort.Split(',').ToList();
+
         // Set pagination headers
         HttpContext.Response.Headers.Add("X-Page", page.ToString());
         HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
@@ -67,19 +65,19 @@ public class UserController : ControllerBase
         if (!string.IsNullOrWhiteSpace(search))
         {
             // Create Meilisearch Client
-            MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+            MeilisearchClient meiliClient =
+                new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
             // Try getting the users index
             try
             {
                 await meiliClient.GetIndexAsync("users");
             }
             // Catch Meilisearch exceptions
-            catch  (MeilisearchApiError e)
+            catch (MeilisearchApiError e)
             {
                 // Don't have an index to search so returning all users in a organization
                 if (e.Code == "index_not_found")
-                {
                     return _dbContext.Organization
                         .Where(o => o.Id == organizationId)
                         .SelectMany(org => org.Users)
@@ -103,28 +101,30 @@ public class UserController : ControllerBase
                             Roles = u.Roles.Select(r => r.Name).ToList()
                         })
                         .ToList();
-                }
             }
-            
+
             // Get the user index
             Index index = meiliClient.Index("users");
-        
+
             // Search the index for the string
             ISearchable<Search.User> searchResult = await index.SearchAsync<Search.User>(
                 search,
                 new SearchQuery
                 {
-                    AttributesToSearchOn = new [] {"jobTitle", "displayName", "givenName", "lastName"},
-                    AttributesToRetrieve = new [] {"id"}
+                    AttributesToSearchOn = new[] { "jobTitle", "displayName", "givenName", "lastName" },
+                    AttributesToRetrieve = new[] { "id" }
                 }
             );
-     
+
             // Create a list of user Ids that contain a match 
             List<long> userIds = searchResult.Hits.Select(u => u.Id).ToList();
-            
-            HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.User.Count(u => u.Organization.Id == organizationId && userIds.Contains(u.Id)).ToString());
-            HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.User.Count(u => u.Organization.Id == organizationId && userIds.Contains(u.Id)) + pageSize - 1 ) / pageSize ).ToString());
-            
+
+            HttpContext.Response.Headers.Add("X-Total-Count",
+                _dbContext.User.Count(u => u.Organization.Id == organizationId && userIds.Contains(u.Id)).ToString());
+            HttpContext.Response.Headers.Add("X-Total-Pages",
+                ((_dbContext.User.Count(u => u.Organization.Id == organizationId && userIds.Contains(u.Id)) + pageSize -
+                  1) / pageSize).ToString());
+
             return _dbContext.User
                 .Where(u => u.Organization.Id == organizationId && userIds.Contains(u.Id))
                 .Include(u => u.Roles)
@@ -148,14 +148,15 @@ public class UserController : ControllerBase
                 })
                 .ToList();
         }
-        
-        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.User.Count(u => u.Organization.Id == organizationId).ToString());
-        
+
+        HttpContext.Response.Headers.Add("X-Total-Count",
+            _dbContext.User.Count(u => u.Organization.Id == organizationId).ToString());
+
         // If SIO is set to true only return the SIO users
         if (sio)
         {
             HttpContext.Response.Headers.Add("X-Total-Pages", "1");
-            
+
             return _dbContext.Organization
                 .Where(o => o.Id == organizationId)
                 .SelectMany(org => org.Users)
@@ -210,71 +211,69 @@ public class UserController : ControllerBase
                         Roles = u.Roles.Select(r => r.Name).ToList()
                     })
                     .ToList();
-            
-            string[] sortNoLimit = sortList[0].Split(" ");
-        
-            if (sortNoLimit[1] == "asc")
-            {
-                // Return all users in a organization
-                return _dbContext.Organization
-                    .Where(o => o.Id == organizationId)
-                    .SelectMany(org => org.Users)
-                    .OrderBy(u =>  EF.Property<object>(u, sortNoLimit[0]))
-                    .Include(u => u.Roles)
-                    .Select(u => new API.User
-                    {
-                        Id = _sqids.Encode(u.Id),
-                        Auth0Id = u.Auth0Id,
-                        JobTitle = u.JobTitle,
-                        GivenName = u.GivenName,
-                        LastName = u.LastName,
-                        DisplayName = u.DisplayName,
-                        EmailAddress = u.EmailAddress,
-                        ProfilePicture = u.ProfilePicture,
-                        Organization = new API.Organization
-                        {
-                            Name = u.Organization.DisplayName,
-                            DisplayName = u.Organization.DisplayName
-                        },
-                        Roles = u.Roles.Select(r => r.Name).ToList()
-                    })
-                    .ToList();
-            }
-            
-            if(sortNoLimit[1] == "desc")
-            {
-                // Return all users in a organization
-                return _dbContext.Organization
-                    .Where(o => o.Id == organizationId)
-                    .SelectMany(org => org.Users)
-                    .OrderBy(u =>  EF.Property<object>(u, sortNoLimit[0]))
-                    .Include(u => u.Roles)
-                    .Select(u => new API.User
-                    {
-                        Id = _sqids.Encode(u.Id),
-                        Auth0Id = u.Auth0Id,
-                        JobTitle = u.JobTitle,
-                        GivenName = u.GivenName,
-                        LastName = u.LastName,
-                        DisplayName = u.DisplayName,
-                        EmailAddress = u.EmailAddress,
-                        ProfilePicture = u.ProfilePicture,
-                        Organization = new API.Organization
-                        {
-                            Name = u.Organization.DisplayName,
-                            DisplayName = u.Organization.DisplayName
-                        },
-                        Roles = u.Roles.Select(r => r.Name).ToList()
-                    })
-                    .ToList();
-            }
 
-            return BadRequest($"Did you understand if you want to sort {sortNoLimit[0]} ascending or descending. Use asc or desc to sort!");
+            string[] sortNoLimit = sortList[0].Split(" ");
+
+            if (sortNoLimit[1] == "asc")
+                // Return all users in a organization
+                return _dbContext.Organization
+                    .Where(o => o.Id == organizationId)
+                    .SelectMany(org => org.Users)
+                    .OrderBy(u => EF.Property<object>(u, sortNoLimit[0]))
+                    .Include(u => u.Roles)
+                    .Select(u => new API.User
+                    {
+                        Id = _sqids.Encode(u.Id),
+                        Auth0Id = u.Auth0Id,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName,
+                        EmailAddress = u.EmailAddress,
+                        ProfilePicture = u.ProfilePicture,
+                        Organization = new API.Organization
+                        {
+                            Name = u.Organization.DisplayName,
+                            DisplayName = u.Organization.DisplayName
+                        },
+                        Roles = u.Roles.Select(r => r.Name).ToList()
+                    })
+                    .ToList();
+
+            if (sortNoLimit[1] == "desc")
+                // Return all users in a organization
+                return _dbContext.Organization
+                    .Where(o => o.Id == organizationId)
+                    .SelectMany(org => org.Users)
+                    .OrderBy(u => EF.Property<object>(u, sortNoLimit[0]))
+                    .Include(u => u.Roles)
+                    .Select(u => new API.User
+                    {
+                        Id = _sqids.Encode(u.Id),
+                        Auth0Id = u.Auth0Id,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName,
+                        EmailAddress = u.EmailAddress,
+                        ProfilePicture = u.ProfilePicture,
+                        Organization = new API.Organization
+                        {
+                            Name = u.Organization.DisplayName,
+                            DisplayName = u.Organization.DisplayName
+                        },
+                        Roles = u.Roles.Select(r => r.Name).ToList()
+                    })
+                    .ToList();
+
+            return BadRequest(
+                $"Did you understand if you want to sort {sortNoLimit[0]} ascending or descending. Use asc or desc to sort!");
         }
-      
+
         // Calculate page size and set header
-        HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.User.Count(u => u.Organization.Id == organizationId) + pageSize - 1 ) / pageSize ).ToString());
-        
+        HttpContext.Response.Headers.Add("X-Total-Pages",
+            ((_dbContext.User.Count(u => u.Organization.Id == organizationId) + pageSize - 1) / pageSize).ToString());
+
         // If no sort is provided or two many sort parameters are provided
         if (sortList == null || sortList.Count != 1)
             // Return all users in a organization
@@ -301,68 +300,65 @@ public class UserController : ControllerBase
                     Roles = u.Roles.Select(r => r.Name).ToList()
                 })
                 .ToList();
-            
-        string[] sort = sortList[0].Split(" ");
-        
-        if (sort[1] == "asc")
-        {
-            // Return all users in a organization
-            return _dbContext.Organization
-                .Where(o => o.Id == organizationId)
-                .SelectMany(org => org.Users)
-                .OrderBy(u =>  EF.Property<object>(u, sort[0]))
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(u => u.Roles)
-                .Select(u => new API.User
-                {
-                    Id = _sqids.Encode(u.Id),
-                    Auth0Id = u.Auth0Id,
-                    JobTitle = u.JobTitle,
-                    GivenName = u.GivenName,
-                    LastName = u.LastName,
-                    DisplayName = u.DisplayName,
-                    EmailAddress = u.EmailAddress,
-                    ProfilePicture = u.ProfilePicture,
-                    Organization = new API.Organization
-                    {
-                        Name = u.Organization.DisplayName,
-                        DisplayName = u.Organization.DisplayName
-                    },
-                    Roles = u.Roles.Select(r => r.Name).ToList()
-                })
-                .ToList();
-        }
-            
-        if(sort[1] == "desc")
-        {
-            // Return all users in a organization
-            return _dbContext.Organization
-                .Where(o => o.Id == organizationId)
-                .SelectMany(org => org.Users)
-                .OrderByDescending(u =>  EF.Property<object>(u, sort[0]))
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(u => u.Roles)
-                .Select(u => new API.User
-                {
-                    Id = _sqids.Encode(u.Id),
-                    Auth0Id = u.Auth0Id,
-                    JobTitle = u.JobTitle,
-                    GivenName = u.GivenName,
-                    LastName = u.LastName,
-                    DisplayName = u.DisplayName,
-                    EmailAddress = u.EmailAddress,
-                    ProfilePicture = u.ProfilePicture,
-                    Organization = new API.Organization
-                    {
-                        Name = u.Organization.DisplayName,
-                        DisplayName = u.Organization.DisplayName
-                    },
-                    Roles = u.Roles.Select(r => r.Name).ToList()
-                })
-                .ToList();
-        }
 
-        return BadRequest($"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
+        string[] sort = sortList[0].Split(" ");
+
+        if (sort[1] == "asc")
+            // Return all users in a organization
+            return _dbContext.Organization
+                .Where(o => o.Id == organizationId)
+                .SelectMany(org => org.Users)
+                .OrderBy(u => EF.Property<object>(u, sort[0]))
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(u => u.Roles)
+                .Select(u => new API.User
+                {
+                    Id = _sqids.Encode(u.Id),
+                    Auth0Id = u.Auth0Id,
+                    JobTitle = u.JobTitle,
+                    GivenName = u.GivenName,
+                    LastName = u.LastName,
+                    DisplayName = u.DisplayName,
+                    EmailAddress = u.EmailAddress,
+                    ProfilePicture = u.ProfilePicture,
+                    Organization = new API.Organization
+                    {
+                        Name = u.Organization.DisplayName,
+                        DisplayName = u.Organization.DisplayName
+                    },
+                    Roles = u.Roles.Select(r => r.Name).ToList()
+                })
+                .ToList();
+
+        if (sort[1] == "desc")
+            // Return all users in a organization
+            return _dbContext.Organization
+                .Where(o => o.Id == organizationId)
+                .SelectMany(org => org.Users)
+                .OrderByDescending(u => EF.Property<object>(u, sort[0]))
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(u => u.Roles)
+                .Select(u => new API.User
+                {
+                    Id = _sqids.Encode(u.Id),
+                    Auth0Id = u.Auth0Id,
+                    JobTitle = u.JobTitle,
+                    GivenName = u.GivenName,
+                    LastName = u.LastName,
+                    DisplayName = u.DisplayName,
+                    EmailAddress = u.EmailAddress,
+                    ProfilePicture = u.ProfilePicture,
+                    Organization = new API.Organization
+                    {
+                        Name = u.Organization.DisplayName,
+                        DisplayName = u.Organization.DisplayName
+                    },
+                    Roles = u.Roles.Select(r => r.Name).ToList()
+                })
+                .ToList();
+
+        return BadRequest(
+            $"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
     }
 
 
@@ -653,36 +649,37 @@ public class UserController : ControllerBase
         await _dbContext.SaveChangesAsync();
 
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+        MeilisearchClient meiliClient =
+            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
         // Try getting the users index
         try
         {
             await meiliClient.GetIndexAsync("users");
         }
         // Catch Meilisearch exceptions
-        catch  (MeilisearchApiError e)
+        catch (MeilisearchApiError e)
         {
             // If error code is index_not_found create the index
-            if (e.Code == "index_not_found")
-            {
-                await meiliClient.CreateIndexAsync("users", "id");
-            }
+            if (e.Code == "index_not_found") await meiliClient.CreateIndexAsync("users", "id");
         }
-           
+
         // Get the users index
-        Index index = meiliClient.Index("users");  
-        
+        Index index = meiliClient.Index("users");
+
         // Update Meilisearch document
-        await index.UpdateDocumentsAsync(new [] {
-            new Search.User()  {
+        await index.UpdateDocumentsAsync(new[]
+        {
+            new Search.User()
+            {
                 Id = user.Id,
                 DisplayName = user.DisplayName,
                 GivenName = user.GivenName,
                 LastName = user.LastName,
                 JobTitle = user.JobTitle
-            }});
-        
+            }
+        });
+
         // Return no content
         return NoContent();
     }
@@ -712,14 +709,14 @@ public class UserController : ControllerBase
 
         // Fetch organization from the database by primary key
         Database.Organization? organization = await _dbContext.Organization.FindAsync(organizationId);
-       
+
 
         if (organization == null)
             return NotFound($"A organization with the Auth0 Organization ID `{organizationId}` can not be found!");
-        
+
         // Load organization settings
         await _dbContext.Entry(organization).Reference(o => o.Settings).LoadAsync();
-        
+
         // Create the user based on the provided values with default settings
         Database.User userModel = new()
         {
@@ -783,36 +780,37 @@ public class UserController : ControllerBase
             });
 
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organization.Settings.MeilisearchUrl, organization.Settings.MeilisearchApiKey);
-        
+        MeilisearchClient meiliClient =
+            new(organization.Settings.MeilisearchUrl, organization.Settings.MeilisearchApiKey);
+
         // Try getting the users index
         try
         {
             await meiliClient.GetIndexAsync("users");
         }
         // Catch Meilisearch exceptions
-        catch  (MeilisearchApiError e)
+        catch (MeilisearchApiError e)
         {
             // If error code is index_not_found create the index
-            if (e.Code == "index_not_found")
-            {
-                await meiliClient.CreateIndexAsync("users", "id");
-            }
+            if (e.Code == "index_not_found") await meiliClient.CreateIndexAsync("users", "id");
         }
-           
+
         // Get the users index
-        Index index = meiliClient.Index("users");  
-        
+        Index index = meiliClient.Index("users");
+
         // Update Meilisearch document
-        await index.AddDocumentsAsync(new [] {
-            new Search.User()  {
+        await index.AddDocumentsAsync(new[]
+        {
+            new Search.User()
+            {
                 Id = userModel.Id,
                 DisplayName = userModel.DisplayName,
                 GivenName = userModel.GivenName,
                 LastName = userModel.LastName,
                 JobTitle = userModel.JobTitle
-            }});
-        
+            }
+        });
+
         return CreatedAtAction(nameof(GetUser), new { userId = userModel.Id }, userResponseObject);
     }
 

@@ -10,7 +10,7 @@ public class OrganizationSettings
     public string? S3AccessKey { get; init; }
     public string? S3SecretKey { get; init; }
     public string? MeilisearchUrl { get; init; }
-    public string? MeilisearchApiKey { get; init;}
+    public string? MeilisearchApiKey { get; init; }
 }
 
 public class UserSettings
@@ -24,7 +24,7 @@ public class UserSettings
 public class Settings
 {
     public required string Auth0UserId { get; init; }
-    public required string OrganizationId  { get; init; }
+    public required string OrganizationId { get; init; }
     public required string UserId { get; init; }
     public required string TimeZone { get; init; }
     public required string DateFormat { get; init; }

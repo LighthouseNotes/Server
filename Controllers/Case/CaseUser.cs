@@ -69,7 +69,7 @@ public class CaseUserController : ControllerBase
 
         // Get the user form the database
         Database.User? user = _dbContext.User.FirstOrDefault(u =>
-            u.Id == rawUserId  && u.Organization.Id == organizationId);
+            u.Id == rawUserId && u.Organization.Id == organizationId);
 
         // If user is null then return HTTP 404 not found 
         if (user == null) return NotFound($"A user with the ID `{userId}` does not exist in your organization!");
@@ -94,24 +94,28 @@ public class CaseUserController : ControllerBase
             });
 
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+        MeilisearchClient meiliClient =
+            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
         // Get the cases index
-        Index index = meiliClient.Index("cases");  
-        
+        Index index = meiliClient.Index("cases");
+
         // Update Meilisearch document
-        await index.UpdateDocumentsAsync(new [] {
-            new Search.Case()  {
+        await index.UpdateDocumentsAsync(new[]
+        {
+            new Search.Case()
+            {
                 Id = sCase.Id,
                 UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
                 DisplayId = sCase.DisplayId,
                 DisplayName = sCase.DisplayName,
                 Name = sCase.Name,
                 SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
-                SIOGivenName =  sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
-                SIOLastName =  sCase.Users.Single(cu => cu.IsSIO).User.LastName
-            }});
-        
+                SIOGivenName = sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
+                SIOLastName = sCase.Users.Single(cu => cu.IsSIO).User.LastName
+            }
+        });
+
         // Return HTTP 204 No Content 
         return NoContent();
     }
@@ -186,25 +190,29 @@ public class CaseUserController : ControllerBase
                 UserID = requestingUserId, OrganizationID = organizationId
             });
 
-         
+
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+        MeilisearchClient meiliClient =
+            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
         // Get the cases index
-        Index index = meiliClient.Index("cases");  
-        
+        Index index = meiliClient.Index("cases");
+
         // Update Meilisearch document
-        await index.UpdateDocumentsAsync(new [] {
-            new Search.Case()  {
+        await index.UpdateDocumentsAsync(new[]
+        {
+            new Search.Case()
+            {
                 Id = sCase.Id,
                 UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
                 DisplayId = sCase.DisplayId,
                 DisplayName = sCase.DisplayName,
                 Name = sCase.Name,
                 SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
-                SIOGivenName =  sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
-                SIOLastName =  sCase.Users.Single(cu => cu.IsSIO).User.LastName
-            }});
+                SIOGivenName = sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
+                SIOLastName = sCase.Users.Single(cu => cu.IsSIO).User.LastName
+            }
+        });
         return Ok();
     }
 

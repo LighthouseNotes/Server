@@ -59,11 +59,15 @@ public class DatabaseContext : DbContext
 
     public DbSet<Database.Event> Event => Set<Database.Event>();
     public DbSet<Database.Organization> Organization => Set<Database.Organization>();
+
     public IEnumerable<Database.OrganizationSettings> OrganizationSettings =>
         Set<Database.OrganizationSettings>();
+
     public DbSet<Database.User> User => Set<Database.User>();
+
     public IEnumerable<Database.UserSettings> UserSettings =>
         Set<Database.UserSettings>();
+
     public IEnumerable<Database.Role> Role => Set<Database.Role>();
     public DbSet<Database.Case> Case => Set<Database.Case>();
     public DbSet<Database.CaseUser> CaseUser => Set<Database.CaseUser>();
@@ -75,7 +79,6 @@ public class DatabaseContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-
         // Organization Configuration Relationship (one to one)
         modelBuilder.Entity<Database.Organization>()
             .HasOne(e => e.Settings)
@@ -87,7 +90,7 @@ public class DatabaseContext : DbContext
             .HasOne(e => e.Settings)
             .WithOne(e => e.User)
             .HasForeignKey<Database.UserSettings>("UserId");
-        
+
         // User events relationship (one to many)
         modelBuilder.Entity<Database.User>()
             .HasMany(u => u.Events)

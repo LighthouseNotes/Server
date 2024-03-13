@@ -73,7 +73,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -145,7 +145,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Convert Note ID squid to ID
         long rawNoteId = _sqids.Decode(noteId)[0];
 
@@ -201,7 +201,9 @@ public class SharedContemporaneousNotesController : ControllerBase
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
             if (objectHashes == null)
-                return Problem($"Unable to find hash value for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "Could not find hash value for shared contemporaneous note!");
+                return Problem(
+                    $"Unable to find hash value for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                    title: "Could not find hash value for shared contemporaneous note!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -226,11 +228,15 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "MD5 hash verification failed!");
+            return Problem(
+                $"MD5 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"SHA256 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "SHA256 hash verification failed!");
+            return Problem(
+                $"SHA256 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                title: "SHA256 hash verification failed!");
 
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
@@ -280,7 +286,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Create minio client
         IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -337,20 +343,22 @@ public class SharedContemporaneousNotesController : ControllerBase
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
-            
+
             // Read memory stream to text
             StreamReader reader = new(memoryStream);
             string text = await reader.ReadToEndAsync();
-            
+
             // Create html document from text
             HtmlDocument htmlDoc = new();
             htmlDoc.LoadHtml(text);
 
             // Create a space separated list of all the text content in the HTML note
-            string content = htmlDoc.DocumentNode.SelectNodes("//text()").Aggregate("", (current, node) => current + $" {node.InnerText}");
+            string content = htmlDoc.DocumentNode.SelectNodes("//text()")
+                .Aggregate("", (current, node) => current + $" {node.InnerText}");
 
             // Create Meilisearch Client
-            MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+            MeilisearchClient meiliClient =
+                new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
 
             // Try getting the contemporaneous-notes index
             try
@@ -358,28 +366,30 @@ public class SharedContemporaneousNotesController : ControllerBase
                 await meiliClient.GetIndexAsync("shared-contemporaneous-notes");
             }
             // Catch Meilisearch exceptions
-            catch  (MeilisearchApiError e)
+            catch (MeilisearchApiError e)
             {
                 // If error code is index_not_found create the index
                 if (e.Code == "index_not_found")
                 {
                     await meiliClient.CreateIndexAsync("shared-contemporaneous-notes", "id");
-                    await meiliClient.Index("shared-contemporaneous-notes").UpdateFilterableAttributesAsync(new [] { "caseId" });
+                    await meiliClient.Index("shared-contemporaneous-notes")
+                        .UpdateFilterableAttributesAsync(new[] { "caseId" });
                 }
             }
-           
+
             // Get the contemporaneous-notes index
-            Index index = meiliClient.Index("shared-contemporaneous-notes");  
-            
-            await index.AddDocumentsAsync(new [] 
-            { 
-                new SharedContemporaneousNote  {
-                    Id = contemporaneousNote.Id, 
-                    CaseId = _sqids.Decode(caseId)[0], 
+            Index index = meiliClient.Index("shared-contemporaneous-notes");
+
+            await index.AddDocumentsAsync(new[]
+            {
+                new SharedContemporaneousNote
+                {
+                    Id = contemporaneousNote.Id,
+                    CaseId = _sqids.Decode(caseId)[0],
                     Content = content
-                } 
+                }
             });
-            
+
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
 
@@ -436,7 +446,8 @@ public class SharedContemporaneousNotesController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<List<API.SharedContemporaneousNotes>>> GetSearchContemporaneousNotes(string caseId, API.Search search)
+    public async Task<ActionResult<List<API.SharedContemporaneousNotes>>> GetSearchContemporaneousNotes(string caseId,
+        API.Search search)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -455,7 +466,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
-        
+
         long rawCaseId = _sqids.Decode(caseId)[0];
 
         // Log the user's organization ID and the user's ID
@@ -477,27 +488,28 @@ public class SharedContemporaneousNotesController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+        MeilisearchClient meiliClient =
+            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
         // Get the contemporaneous-notes index
-        Index index = meiliClient.Index("shared-contemporaneous-notes");  
-        
+        Index index = meiliClient.Index("shared-contemporaneous-notes");
+
         // Search the index for the string filtering by case id and user id
         ISearchable<SharedContemporaneousNote> searchResult = await index.SearchAsync<SharedContemporaneousNote>(
             search.Query,
             new SearchQuery
             {
-                AttributesToSearchOn = new [] {"content"},
-                AttributesToRetrieve = new [] {"id"},
-                Filter = $"caseId = {rawCaseId}",
+                AttributesToSearchOn = new[] { "content" },
+                AttributesToRetrieve = new[] { "id" },
+                Filter = $"caseId = {rawCaseId}"
             }
         );
-     
+
         // Create a list of contemporaneous notes Ids that contain a match 
         List<long> contemporaneousNotesIds = searchResult.Hits.Select(cn => cn.Id).ToList();
-       
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 

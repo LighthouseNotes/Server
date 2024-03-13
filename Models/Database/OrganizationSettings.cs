@@ -11,5 +11,5 @@ public class OrganizationSettings : Base
     [MaxLength(20)] public required string S3AccessKey { get; set; }
     [MaxLength(40)] public required string S3SecretKey { get; set; }
     [MaxLength(2083)] public required string MeilisearchUrl { get; set; }
-    [MaxLength(64)] public required string MeilisearchApiKey { get; set;}
+    [MaxLength(64)] public required string MeilisearchApiKey { get; set; }
 }

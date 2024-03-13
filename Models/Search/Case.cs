@@ -1,3 +1,5 @@
+// ReSharper disable InconsistentNaming
+
 namespace Server.Models.Search;
 
 public class Case

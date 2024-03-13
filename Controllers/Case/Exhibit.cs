@@ -23,7 +23,8 @@ public class ExhibitController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<IEnumerable<API.Exhibit>>> GetExhibits(string caseId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "")
+    public async Task<ActionResult<IEnumerable<API.Exhibit>>> GetExhibits(string caseId, [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10, [FromQuery(Name = "sort")] string rawSort = "")
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -57,22 +58,19 @@ public class ExhibitController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Create sort list
         List<string>? sortList = null;
-        
+
         // If raw sort is specified set sort list
-        if (!string.IsNullOrWhiteSpace(rawSort))
-        {
-            sortList = rawSort.Split(',').ToList();
-        }
+        if (!string.IsNullOrWhiteSpace(rawSort)) sortList = rawSort.Split(',').ToList();
 
         // Set pagination headers
         HttpContext.Response.Headers.Add("X-Page", page.ToString());
         HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
         HttpContext.Response.Headers.Add("X-Total-Count", sCase.Exhibits.Count.ToString());
-        
-        
+
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -90,9 +88,10 @@ public class ExhibitController : ControllerBase
                 SeizedBy = e.SeizedBy
             }).ToList();
         }
-        
-        HttpContext.Response.Headers.Add("X-Total-Pages", ((sCase.Exhibits.Count + pageSize - 1 ) / pageSize ).ToString());
-        
+
+        HttpContext.Response.Headers.Add("X-Total-Pages",
+            ((sCase.Exhibits.Count + pageSize - 1) / pageSize).ToString());
+
         // If no sort is provided or two many sort parameters are provided, sort by accessed time
         if (sortList == null || sortList.Count != 1)
             // Return the cases exhibits 
@@ -105,38 +104,37 @@ public class ExhibitController : ControllerBase
                 WhereSeizedProduced = e.WhereSeizedProduced,
                 SeizedBy = e.SeizedBy
             }).Skip((page - 1) * pageSize).Take(pageSize).ToList();
-        
+
         string[] sort = sortList[0].Split(" ");
         if (sort[1] == "asc")
-        {
             // Return the cases exhibits 
             return sCase.Exhibits.Select(e => new API.Exhibit
-            {
-                Id = _sqids.Encode(e.Id),
-                Reference = e.Reference,
-                Description = e.Description,
-                DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
-                WhereSeizedProduced = e.WhereSeizedProduced,
-                SeizedBy = e.SeizedBy
-            }).OrderBy(e => e.GetType().GetProperty(sort[0])?.GetValue(e)).Skip((page - 1) * pageSize).Take(pageSize).ToList();
-        }
-        
-        if(sort[1] == "desc")
-        {
-            // Return the cases exhibits 
-            return sCase.Exhibits.Select(e => new API.Exhibit
-            {
-                Id = _sqids.Encode(e.Id),
-                Reference = e.Reference,
-                Description = e.Description,
-                DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
-                WhereSeizedProduced = e.WhereSeizedProduced,
-                SeizedBy = e.SeizedBy
-            }).OrderByDescending(e => e.GetType().GetProperty(sort[0])?.GetValue(e)).Skip((page - 1) * pageSize).Take(pageSize).ToList();
-        }
+                {
+                    Id = _sqids.Encode(e.Id),
+                    Reference = e.Reference,
+                    Description = e.Description,
+                    DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
+                    WhereSeizedProduced = e.WhereSeizedProduced,
+                    SeizedBy = e.SeizedBy
+                }).OrderBy(e => e.GetType().GetProperty(sort[0])?.GetValue(e)).Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
 
-        return BadRequest($"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
-       
+        if (sort[1] == "desc")
+            // Return the cases exhibits 
+            return sCase.Exhibits.Select(e => new API.Exhibit
+                {
+                    Id = _sqids.Encode(e.Id),
+                    Reference = e.Reference,
+                    Description = e.Description,
+                    DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
+                    WhereSeizedProduced = e.WhereSeizedProduced,
+                    SeizedBy = e.SeizedBy
+                }).OrderByDescending(e => e.GetType().GetProperty(sort[0])?.GetValue(e)).Skip((page - 1) * pageSize)
+                .Take(pageSize).ToList();
+
+        return BadRequest(
+            $"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
     }
 
     // GET: /case/?/exhibit/?

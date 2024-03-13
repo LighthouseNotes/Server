@@ -20,8 +20,7 @@ public class CaseController : ControllerBase
         _auditContext = new AuditScopeFactory();
         _sqids = sqids;
     }
-    
-    
+
 
     // GET: /cases
     [Route("/cases")]
@@ -32,7 +31,8 @@ public class CaseController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<IEnumerable<API.Case>>> GetCases([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery (Name = "sort")] string rawSort = "", string search = "")
+    public async Task<ActionResult<IEnumerable<API.Case>>> GetCases([FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10, [FromQuery(Name = "sort")] string rawSort = "", string search = "")
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -56,49 +56,52 @@ public class CaseController : ControllerBase
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("OrganizationID", organizationId);
         auditScope.SetCustomField("UserID", userId);
-        
+
         // Create sort list
         List<string>? sortList = null;
-        
+
         // If raw sort is specified set sort list
-        if (!string.IsNullOrWhiteSpace(rawSort))
-        {
-            sortList = rawSort.Split(',').ToList();
-        }
+        if (!string.IsNullOrWhiteSpace(rawSort)) sortList = rawSort.Split(',').ToList();
 
         // Set pagination headers
         HttpContext.Response.Headers.Add("X-Page", page.ToString());
         HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
-      
-        
+
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
             // Create Meilisearch Client
-            MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+            MeilisearchClient meiliClient =
+                new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
             // Get the cases index
             Index index = meiliClient.Index("cases");
-        
+
             // Search the index for the string filtering by user id
             ISearchable<Search.Case> searchResult = await index.SearchAsync<Search.Case>(
                 search,
                 new SearchQuery
                 {
-                    AttributesToSearchOn = new [] {"displayId", "name", "displayName", "sioDisplayName", "sioGivenName", "sioLastName"},
-                    AttributesToRetrieve = new [] {"id"},
+                    AttributesToSearchOn = new[]
+                        { "displayId", "name", "displayName", "sioDisplayName", "sioGivenName", "sioLastName" },
+                    AttributesToRetrieve = new[] { "id" },
                     Filter = $"userIds = {userId}"
                 }
             );
-     
+
             // Create a list of case Ids that contain a match 
             List<long> caseIds = searchResult.Hits.Select(c => c.Id).ToList();
-            
-            HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)  && caseIds.Contains(c.Id)).ToString());
-            HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id)) + pageSize - 1 ) / pageSize ).ToString());
-            
+
+            HttpContext.Response.Headers.Add("X-Total-Count",
+                _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id))
+                    .ToString());
+            HttpContext.Response.Headers.Add("X-Total-Pages",
+                ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id)) +
+                    pageSize - 1) / pageSize).ToString());
+
             return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id))
                 .OrderByDescending(c => c.Accessed)
                 .Skip((page - 1) * pageSize).Take(pageSize)
@@ -135,10 +138,13 @@ public class CaseController : ControllerBase
                     }).ToList()
                 }).ToList();
         }
-        
-        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)).ToString());
-        HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)) + pageSize - 1 ) / pageSize ).ToString());
-        
+
+        HttpContext.Response.Headers.Add("X-Total-Count",
+            _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)).ToString());
+        HttpContext.Response.Headers.Add("X-Total-Pages",
+            ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)) + pageSize - 1) / pageSize)
+            .ToString());
+
         // If no sort is provided or two many sort parameters are provided, sort by accessed time
         if (sortList == null || sortList.Count != 1)
             return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
@@ -176,89 +182,85 @@ public class CaseController : ControllerBase
                         Roles = cu.User.Roles.Select(r => r.Name).ToList()
                     }).ToList()
                 }).ToList();
-        
-        string[] sort = sortList[0].Split(" ");
-        
-        if (sort[1] == "asc")
-        {
-            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
-                .OrderBy(c =>  EF.Property<object>(c, sort[0]))
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
-                {
-                    Id = _sqids.Encode(c.Id),
-                    DisplayId = c.DisplayId,
-                    Name = c.Name,
-                    DisplayName = c.DisplayName,
-                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName,
-                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).Single(),
-                    Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
-                    Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
-                    Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
-                    Status = c.Status,
-                    Users = c.Users.Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).ToList()
-                }).ToList();
-        }
-        
-        if(sort[1] == "desc")
-        {
-            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
-                .OrderByDescending(c =>  EF.Property<object>(c, sort[0]))
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
-                {
-                    Id = _sqids.Encode(c.Id),
-                    DisplayId = c.DisplayId,
-                    Name = c.Name,
-                    DisplayName = c.DisplayName,
-                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName,
-                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).Single(),
-                    Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
-                    Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
-                    Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
-                    Status = c.Status,
-                    Users = c.Users.Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).ToList()
-                }).ToList();
-        }
 
-        return BadRequest($"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
-        
+        string[] sort = sortList[0].Split(" ");
+
+        if (sort[1] == "asc")
+            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
+                .OrderBy(c => EF.Property<object>(c, sort[0]))
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
+                {
+                    Id = _sqids.Encode(c.Id),
+                    DisplayId = c.DisplayId,
+                    Name = c.Name,
+                    DisplayName = c.DisplayName,
+                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
+                    {
+                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName,
+                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                        ProfilePicture = cu.User.ProfilePicture,
+                        Organization = new API.Organization
+                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                    }).Single(),
+                    Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
+                    Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
+                    Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
+                    Status = c.Status,
+                    Users = c.Users.Select(cu => new API.User
+                    {
+                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                        ProfilePicture = cu.User.ProfilePicture,
+                        Organization = new API.Organization
+                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                    }).ToList()
+                }).ToList();
+
+        if (sort[1] == "desc")
+            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
+                .OrderByDescending(c => EF.Property<object>(c, sort[0]))
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
+                {
+                    Id = _sqids.Encode(c.Id),
+                    DisplayId = c.DisplayId,
+                    Name = c.Name,
+                    DisplayName = c.DisplayName,
+                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
+                    {
+                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName,
+                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                        ProfilePicture = cu.User.ProfilePicture,
+                        Organization = new API.Organization
+                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                    }).Single(),
+                    Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
+                    Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
+                    Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
+                    Status = c.Status,
+                    Users = c.Users.Select(cu => new API.User
+                    {
+                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
+                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
+                        ProfilePicture = cu.User.ProfilePicture,
+                        Organization = new API.Organization
+                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
+                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                    }).ToList()
+                }).ToList();
+
+        return BadRequest(
+            $"Did you understand if you want to sort {sort[0]} ascending or descending. Use asc or desc to sort!");
     }
 
     // GET: /case/?
@@ -312,11 +314,11 @@ public class CaseController : ControllerBase
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
         // Return requested case details
-        
+
         // Update the access time
         sCase.Accessed = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync();
-        
+
         return new API.Case
         {
             Id = _sqids.Encode(sCase.Id),
@@ -428,7 +430,7 @@ public class CaseController : ControllerBase
 
             // Update case ID in the database
             sCase.DisplayId = updatedCase.DisplayId;
-            
+
             // Update display name
             sCase.DisplayName = $"{sCase.DisplayId} {sCase.Name}";
         }
@@ -496,7 +498,7 @@ public class CaseController : ControllerBase
                     User = newSIO,
                     IsSIO = true
                 });
-                
+
                 // Log the SIO user given access
                 await _auditContext.LogAsync("Lighthouse Notes",
                     new
@@ -513,28 +515,32 @@ public class CaseController : ControllerBase
                 sCase.Users.Single(cu => cu.User.Id == newSIO.Id).IsSIO = true;
             }
         }
-        
+
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
-        
+
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+        MeilisearchClient meiliClient =
+            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
         // Get the cases index
-        Index index = meiliClient.Index("cases");  
-        
+        Index index = meiliClient.Index("cases");
+
         // Update Meilisearch document
-        await index.UpdateDocumentsAsync(new [] {
-            new Search.Case()  {
+        await index.UpdateDocumentsAsync(new[]
+        {
+            new Search.Case()
+            {
                 Id = sCase.Id,
                 UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
                 DisplayId = sCase.DisplayId,
                 DisplayName = sCase.DisplayName,
                 Name = sCase.Name,
                 SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
-                SIOGivenName =  sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
-                SIOLastName =  sCase.Users.Single(cu => cu.IsSIO).User.LastName
-            }});
+                SIOGivenName = sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
+                SIOLastName = sCase.Users.Single(cu => cu.IsSIO).User.LastName
+            }
+        });
 
         // Return no content
         return NoContent();
@@ -671,9 +677,10 @@ public class CaseController : ControllerBase
 
         // Save changes to the database
         await _dbContext.SaveChangesAsync();
-        
+
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+        MeilisearchClient meiliClient =
+            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
 
         // Try getting the contemporaneous-notes index
         try
@@ -681,22 +688,23 @@ public class CaseController : ControllerBase
             await meiliClient.GetIndexAsync("cases");
         }
         // Catch Meilisearch exceptions
-        catch  (MeilisearchApiError e)
+        catch (MeilisearchApiError e)
         {
             // If error code is index_not_found create the index
             if (e.Code == "index_not_found")
             {
                 await meiliClient.CreateIndexAsync("cases", "id");
-                await meiliClient.Index("cases").UpdateFilterableAttributesAsync(new [] { "userIds" });
+                await meiliClient.Index("cases").UpdateFilterableAttributesAsync(new[] { "userIds" });
             }
         }
-           
+
         // Get the cases index
-        Index index = meiliClient.Index("cases");  
-            
-        await index.AddDocumentsAsync(new [] 
-        { 
-            new Search.Case()  {
+        Index index = meiliClient.Index("cases");
+
+        await index.AddDocumentsAsync(new[]
+        {
+            new Search.Case()
+            {
                 Id = sCase.Id,
                 UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
                 DisplayId = sCase.DisplayId,
@@ -705,7 +713,7 @@ public class CaseController : ControllerBase
                 SIODisplayName = SIOUser.DisplayName,
                 SIOGivenName = SIOUser.GivenName,
                 SIOLastName = SIOUser.LastName
-            } 
+            }
         });
 
         // Explicitly load roles for each user

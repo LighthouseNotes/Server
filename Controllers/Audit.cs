@@ -19,7 +19,8 @@ public class AuditController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<IEnumerable<API.UserAudit>>> SimpleAudit([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    public async Task<ActionResult<IEnumerable<API.UserAudit>>> SimpleAudit([FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10)
     {
         PreflightResponse preflightResponse = await PreflightChecks();
 
@@ -48,16 +49,21 @@ public class AuditController : ControllerBase
         // Set pagination headers
         HttpContext.Response.Headers.Add("X-Page", page.ToString());
         HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
-        HttpContext.Response.Headers.Add("X-Total-Count", _dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId).ToString());
-        HttpContext.Response.Headers.Add("X-Total-Pages", ((_dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId) + pageSize - 1 ) / pageSize ).ToString());
+        HttpContext.Response.Headers.Add("X-Total-Count",
+            _dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId)
+                .ToString());
+        HttpContext.Response.Headers.Add("X-Total-Pages",
+            ((_dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId) +
+                pageSize - 1) / pageSize).ToString());
 
         // Return all events with the type "Lighthouse Notes" ordered by date in descending order 
-        return _dbContext.Event.Where(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId).OrderByDescending(e => e.Created).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new API.UserAudit
-        {
-            Action = x.Data.RootElement.GetProperty("Action").GetString()!,
-            DateTime = TimeZoneInfo.ConvertTimeFromUtc(x.Data.RootElement.GetProperty("StartDate").GetDateTime(),
-                timeZone)
-        }).ToList();
+        return _dbContext.Event.Where(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId)
+            .OrderByDescending(e => e.Created).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new API.UserAudit
+            {
+                Action = x.Data.RootElement.GetProperty("Action").GetString()!,
+                DateTime = TimeZoneInfo.ConvertTimeFromUtc(x.Data.RootElement.GetProperty("StartDate").GetDateTime(),
+                    timeZone)
+            }).ToList();
     }
 
     private async Task<PreflightResponse> PreflightChecks()

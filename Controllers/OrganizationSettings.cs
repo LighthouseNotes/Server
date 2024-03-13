@@ -168,7 +168,7 @@ public class OrganizationSettingsController : ControllerBase
 
             organizationSettings.S3SecretKey = updatedOrganizationSettings.S3SecretKey;
         }
-        
+
         // If Meilisearch Url is not null and does not equal the value in the database update it 
         if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.MeilisearchUrl) &&
             updatedOrganizationSettings.MeilisearchUrl != organizationSettings.MeilisearchUrl)
@@ -184,7 +184,7 @@ public class OrganizationSettingsController : ControllerBase
 
             organizationSettings.MeilisearchUrl = updatedOrganizationSettings.MeilisearchUrl;
         }
-        
+
         // If Meilisearch Api key is not null and does not equal the value in the database update it 
         if (!string.IsNullOrWhiteSpace(updatedOrganizationSettings.MeilisearchApiKey) &&
             updatedOrganizationSettings.MeilisearchApiKey != organizationSettings.MeilisearchApiKey)

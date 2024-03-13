@@ -16,27 +16,45 @@
             <div class="mud-card-content">
                 <p class="mud-typography mud-typography-body1"><b> ID: </b>3</p>
                 <p class="mud-typography mud-typography-body1"><b> Name: </b> New Notes</p>
-                <p class="mud-typography mud-typography-body1"><b> Created: </b> @Model.Created </p>
-                <p class="mud-typography mud-typography-body1"><b> Modified: </b> @Model.Modified </p>
-                <p class="mud-typography mud-typography-body1"><b> Status: </b> @Model.Status </p>
+                <p class="mud-typography mud-typography-body1">
+                    <b> Created: </b> @Model.Created
+                </p>
+                <p class="mud-typography mud-typography-body1">
+                    <b> Modified: </b> @Model.Modified
+                </p>
+                <p class="mud-typography mud-typography-body1">
+                    <b> Status: </b> @Model.Status
+                </p>
             </div>
         </div>
     </div>
     <div class="mud-grid-item mud-grid-item-xs-12 mud-grid-item-sm-6 mud-grid-item-md-5 mud-grid-item-xxl-5">
-    
+
         <div class="mud-paper mud-card" style="">
             <div class="mud-card-header">
                 <div class="mud-card-header-avatar">
-                    <div class="mud-avatar mud-avatar-medium mud-avatar-square mud-avatar-filled mud-avatar-filled-default mud-elevation-0" style=""><img alt="User profile picture" src="@Model.SIO.ProfilePicture" class="mud-image object-scale-down object-center" height="45"></div></div>
-                <div class="mud-card-header-content"><h6 class="mud-typography mud-typography-h6"> Senior Investigative Officer </h6>
+                    <div class="mud-avatar mud-avatar-medium mud-avatar-square mud-avatar-filled mud-avatar-filled-default mud-elevation-0" style="">
+                        <img alt="User profile picture" src="@Model.SIO.ProfilePicture" class="mud-image object-scale-down object-center" height="45">
+                    </div>
+                </div>
+                <div class="mud-card-header-content">
+                    <h6 class="mud-typography mud-typography-h6"> Senior Investigative Officer </h6>
                     <h6 class="mud-typography mud-typography-subtitle1"> @Model.SIO.DisplayName</h6>
                 </div>
             </div>
             <div class="mud-card-content">
-                <p class="mud-typography mud-typography-body1"><b> Given Name &amp; Last Name: </b> @Model.SIO.GivenName @Model.SIO.LastName </p>
-                <p class="mud-typography mud-typography-body1"><b> Email Address: </b> @Model.SIO.EmailAddress </p>
-                <p class="mud-typography mud-typography-body1"><b> Organization: </b> @Model.SIO.Organization.DisplayName </p>
-                <p class="mud-typography mud-typography-body1"><b> Job Title: </b> @Model.SIO.JobTitle </p>
+                <p class="mud-typography mud-typography-body1">
+                    <b> Given Name &amp; Last Name: </b> @Model.SIO.GivenName @Model.SIO.LastName
+                </p>
+                <p class="mud-typography mud-typography-body1">
+                    <b> Email Address: </b> @Model.SIO.EmailAddress
+                </p>
+                <p class="mud-typography mud-typography-body1">
+                    <b> Organization: </b> @Model.SIO.Organization.DisplayName
+                </p>
+                <p class="mud-typography mud-typography-body1">
+                    <b> Job Title: </b> @Model.SIO.JobTitle
+                </p>
             </div>
         </div>
     </div>
@@ -52,17 +70,23 @@
                         <tr class="mud-table-row">
                             <th scope="col" class="mud-table-cell" style="" colspan="1">
                                 <span class="column-header">
-                                    <span class="sortable-column-header cursor-pointer"> <b> Display Name </b></span>
+                                    <span class="sortable-column-header cursor-pointer">
+                                        <b> Display Name </b>
+                                    </span>
                                 </span>
                             </th>
                             <th scope="col" class="mud-table-cell" style="" colspan="1">
                                 <span class="column-header">
-                                    <span class="sortable-column-header cursor-pointer"> <b> Organization </b></span>
+                                    <span class="sortable-column-header cursor-pointer">
+                                        <b> Organization </b>
+                                    </span>
                                 </span>
                             </th>
                             <th scope="col" class="mud-table-cell" style="" colspan="1">
                                 <span class="column-header">
-                                    <span class="sortable-column-header cursor-pointer"> <b> Job Title </b></span>
+                                    <span class="sortable-column-header cursor-pointer">
+                                        <b> Job Title </b>
+                                    </span>
                                 </span>
                             </th>
                         </tr>
@@ -105,13 +129,12 @@
                     </div>
                 </div>
             </div>
-        
+
         </div>
         if (Model.ContemporaneousNotes.IndexOf(contemporaneousNote) + 1 != Model.ContemporaneousNotes.Count)
         {
             <hr class="mud-divider my-6 mud-theme-primary">
         }
-       
     }
 </div>
 @* Page 3 - Tabs *@
@@ -148,7 +171,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="mud-collapse-container mud-collapse-entered" style="height:auto;">
                 <div class="mud-collapse-wrapper">
                     <div class="mud-collapse-wrapper-inner">
@@ -160,10 +183,10 @@
             </div>
 
         </div>
-         if (Model.SharedContemporaneousNotes.IndexOf(contemporaneousNote) + 1 != Model.SharedContemporaneousNotes.Count)
-            {
-                <hr class="mud-divider my-6 mud-theme-primary">
-            }
+        if (Model.SharedContemporaneousNotes.IndexOf(contemporaneousNote) + 1 != Model.SharedContemporaneousNotes.Count)
+        {
+            <hr class="mud-divider my-6 mud-theme-primary">
+        }
     }
 </div>
 @* Page 4 - Shared Tabs *@
@@ -181,7 +204,7 @@
         <hr class="mud-divider my-6 mud-theme-primary">
     }
 }
+
 @code {
-    [Parameter]
-    public required API.Export Model { get; set; }
+    [Parameter] public required API.Export Model { get; set; }
 }

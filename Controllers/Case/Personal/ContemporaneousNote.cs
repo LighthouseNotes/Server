@@ -177,7 +177,9 @@ public class ContemporaneousNotesController : ControllerBase
 
         // If object hash is null then a hash does not exist so return a HTTP 500 error
         if (objectHashes == null)
-            return Problem($"Unable to find hash value for contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "Could not find hash value for contemporaneous note!");
+            return Problem(
+                $"Unable to find hash value for contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                title: "Could not find hash value for contemporaneous note!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -202,11 +204,15 @@ public class ContemporaneousNotesController : ControllerBase
 
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
-            return Problem($"MD5 hash verification failed for contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "MD5 hash verification failed!");
+            return Problem(
+                $"MD5 hash verification failed for contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
-            return Problem($"SHA256 hash verification failed for contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!", title: "SHA256 hash verification failed!");
+            return Problem(
+                $"SHA256 hash verification failed for contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                title: "SHA256 hash verification failed!");
 
         // Return file
         return File(memoryStream.ToArray(), "application/octet-stream", "");
@@ -305,23 +311,25 @@ public class ContemporaneousNotesController : ControllerBase
                 .WithObjectSize(memoryStream.Length)
                 .WithContentType("application/octet-stream")
             );
-            
+
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
-            
+
             // Read memory stream to text
             StreamReader reader = new(memoryStream);
             string text = await reader.ReadToEndAsync();
-            
+
             // Create html document from text
             HtmlDocument htmlDoc = new();
             htmlDoc.LoadHtml(text);
 
             // Create a space separated list of all the text content in the HTML note
-            string content = htmlDoc.DocumentNode.SelectNodes("//text()").Aggregate("", (current, node) => current + $" {node.InnerText}");
+            string content = htmlDoc.DocumentNode.SelectNodes("//text()")
+                .Aggregate("", (current, node) => current + $" {node.InnerText}");
 
             // Create Meilisearch Client
-            MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+            MeilisearchClient meiliClient =
+                new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
 
             // Try getting the contemporaneous-notes index
             try
@@ -329,29 +337,31 @@ public class ContemporaneousNotesController : ControllerBase
                 await meiliClient.GetIndexAsync("contemporaneous-notes");
             }
             // Catch Meilisearch exceptions
-            catch  (MeilisearchApiError e)
+            catch (MeilisearchApiError e)
             {
                 // If error code is index_not_found create the index
                 if (e.Code == "index_not_found")
                 {
                     await meiliClient.CreateIndexAsync("contemporaneous-notes", "id");
-                    await meiliClient.Index("contemporaneous-notes").UpdateFilterableAttributesAsync(new [] { "caseId", "userId" });
+                    await meiliClient.Index("contemporaneous-notes")
+                        .UpdateFilterableAttributesAsync(new[] { "caseId", "userId" });
                 }
             }
-           
+
             // Get the contemporaneous-notes index
-            Index index = meiliClient.Index("contemporaneous-notes");  
-            
-            await index.AddDocumentsAsync(new [] 
-            { 
-                new Search.ContemporaneousNote  {
-                    Id = contemporaneousNote.Id, 
-                    UserId = userId, 
-                    CaseId = _sqids.Decode(caseId)[0], 
+            Index index = meiliClient.Index("contemporaneous-notes");
+
+            await index.AddDocumentsAsync(new[]
+            {
+                new Search.ContemporaneousNote
+                {
+                    Id = contemporaneousNote.Id,
+                    UserId = userId,
+                    CaseId = _sqids.Decode(caseId)[0],
                     Content = content
-                } 
+                }
             });
-            
+
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
 
@@ -399,7 +409,7 @@ public class ContemporaneousNotesController : ControllerBase
                 $"An unknown error occured while adding a contemporaneous note. For more information see the following error message: `{e.Message}`");
         }
     }
-    
+
     // POST:  /case/?/contemporaneous-notes/search
     [HttpPost("contemporaneous-notes/search")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -408,7 +418,8 @@ public class ContemporaneousNotesController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
     [Authorize(Roles = "user")]
-    public async Task<ActionResult<List<API.ContemporaneousNotes>>> GetSearchContemporaneousNotes(string caseId, API.Search search)
+    public async Task<ActionResult<List<API.ContemporaneousNotes>>> GetSearchContemporaneousNotes(string caseId,
+        API.Search search)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -426,7 +437,7 @@ public class ContemporaneousNotesController : ControllerBase
         string organizationId = preflightResponse.Details.OrganizationId;
         Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
         long userId = preflightResponse.Details.UserId;
-        long rawCaseId = _sqids.Decode(caseId)[0]; 
+        long rawCaseId = _sqids.Decode(caseId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
         // Log the user's organization ID and the user's ID
@@ -445,25 +456,26 @@ public class ContemporaneousNotesController : ControllerBase
         // The case might not exist or the user does not have access to the case
 
         // Create Meilisearch Client
-        MeilisearchClient meiliClient = new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
-        
+        MeilisearchClient meiliClient =
+            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+
         // Get the contemporaneous-notes index
-        Index index = meiliClient.Index("contemporaneous-notes");  
-        
+        Index index = meiliClient.Index("contemporaneous-notes");
+
         // Search the index for the string filtering by case id and user id
         ISearchable<Search.ContemporaneousNote> searchResult = await index.SearchAsync<Search.ContemporaneousNote>(
             search.Query,
             new SearchQuery
             {
-                AttributesToSearchOn = new [] {"content"},
-                AttributesToRetrieve = new [] {"id"},
-                Filter = $"caseId = {rawCaseId} AND userId = {userId}",
+                AttributesToSearchOn = new[] { "content" },
+                AttributesToRetrieve = new[] { "id" },
+                Filter = $"caseId = {rawCaseId} AND userId = {userId}"
             }
         );
-     
+
         // Create a list of contemporaneous notes Ids that contain a match 
         List<long> contemporaneousNotesIds = searchResult.Hits.Select(cn => cn.Id).ToList();
-       
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -534,6 +546,4 @@ public class ContemporaneousNotesController : ControllerBase
         public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }
-
-  
 }

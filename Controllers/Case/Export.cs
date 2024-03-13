@@ -58,7 +58,7 @@ public class ExportController : ControllerBase
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
         long rawCaseId = _sqids.Decode(caseId)[0];
-        
+
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
@@ -89,7 +89,7 @@ public class ExportController : ControllerBase
         // If case does not exist then return a HTTP 404 error 
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Get case user from the database including the required entities 
         Database.CaseUser? caseUser = await _dbContext.CaseUser
             .Where(cu => cu.Case.Id == rawCaseId && cu.User.Id == rawUserId)
@@ -101,7 +101,7 @@ public class ExportController : ControllerBase
         // If case user does not exist then return a HTTP 404 error 
         if (caseUser == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        
+
         // Create minio client
         IMinioClient minio = new MinioClient()
             .WithEndpoint(organizationSettings.S3Endpoint)
@@ -127,7 +127,7 @@ public class ExportController : ControllerBase
             DisplayName = sCase.DisplayName,
             SIO = new API.User
             {
-                Id = _sqids.Encode(sioUser.Id),  Auth0Id = sioUser.Auth0Id, 
+                Id = _sqids.Encode(sioUser.Id), Auth0Id = sioUser.Auth0Id,
                 JobTitle = sioUser.JobTitle, DisplayName = sioUser.DisplayName,
                 GivenName = sioUser.GivenName, LastName = sioUser.LastName, EmailAddress = sioUser.EmailAddress,
                 ProfilePicture = sioUser.ProfilePicture,
@@ -152,16 +152,16 @@ public class ExportController : ControllerBase
 
         // Create functions class 
         Functions functions = new(_sqids, caseId, userId, sCase, caseUser, organizationSettings, timeZone);
-        
+
         /////////////////////////
         // Personal Comp Notes //
         /////////////////////////
         foreach (Database.ContemporaneousNote contemporaneousNote in caseUser.ContemporaneousNotes)
         {
-
             // Get contemporaneous note
-            API.ContemporaneousNotesExport contemporaneousNoteObject = await functions.GetContemporaneousNote(contemporaneousNote);
-            
+            API.ContemporaneousNotesExport contemporaneousNoteObject =
+                await functions.GetContemporaneousNote(contemporaneousNote);
+
             // Add contemporaneous note to model 
             model.ContemporaneousNotes.Add(contemporaneousNoteObject);
         }
@@ -172,10 +172,9 @@ public class ExportController : ControllerBase
         // Loop through each tab and add to model
         foreach (Database.Tab tab in caseUser.Tabs)
         {
-
             // Get tab
             API.TabExport tabObject = await functions.GetTab(tab);
-            
+
             // Add tab to model 
             model.Tabs.Add(tabObject);
         }
@@ -186,8 +185,9 @@ public class ExportController : ControllerBase
         foreach (Database.SharedContemporaneousNote contemporaneousNote in sCase.SharedContemporaneousNotes)
         {
             // Get shared contemporaneous note
-            API.SharedContemporaneousNotesExport contemporaneousNoteObject = await functions.GetSharedContemporaneousNote(contemporaneousNote);
-            
+            API.SharedContemporaneousNotesExport contemporaneousNoteObject =
+                await functions.GetSharedContemporaneousNote(contemporaneousNote);
+
             // Add shared contemporaneous note to model 
             model.SharedContemporaneousNotes.Add(contemporaneousNoteObject);
         }
@@ -198,10 +198,9 @@ public class ExportController : ControllerBase
         // Loop through each tab and add to model
         foreach (Database.SharedTab tab in sCase.SharedTabs)
         {
-
             // Get shared tab
             API.SharedTabExport tabObject = await functions.GetSharedTab(tab);
-            
+
             // Add shared tab to model 
             model.SharedTabs.Add(tabObject);
         }
@@ -214,46 +213,47 @@ public class ExportController : ControllerBase
             .Set(c => c.Model, model)
             .AddService(_logger)
             .Render();
-        
+
         // Convert export template blazor page to HTML
         string contentHTML = new ComponentRenderer<ExportTemplate>()
             .Set(c => c.Model, model)
             .AddService(_logger)
             .Render();
-        
+
         // Use export helpers
         PDFFuctions pdfFuctions = new();
-        
+
         // Create cover page PDF and load it
         MemoryStream coverPDFStream = await pdfFuctions.GeneratePDFCoverPage(coverHTML, model.DisplayName);
         PdfLoadedDocument coverPDF = new(coverPDFStream);
-        
+
         // Create content PDF and load it
-        MemoryStream contentPDFStream = await  pdfFuctions.GeneratePDF(contentHTML, model.DisplayName, timeZone.DisplayName);
+        MemoryStream contentPDFStream =
+            await pdfFuctions.GeneratePDF(contentHTML, model.DisplayName, timeZone.DisplayName);
         PdfLoadedDocument contentPDF = new(contentPDFStream);
-        
+
         // Create final PDF document
         PdfDocument finalDocument = new();
-        
+
         // Add cover page
         finalDocument.ImportPage(coverPDF, 0);
-        
+
         // Add all content pages
         finalDocument.ImportPageRange(contentPDF, 0, contentPDF.PageCount - 1);
-        
+
         // Create memory stream to store the final pdf in
         MemoryStream finalMemoryStream = new();
-        
+
         // Save the final pdf to the memory stream
         finalDocument.Save(finalMemoryStream);
         finalDocument.Close(true);
-        
+
         // Flush the memory stream and set position to 0
-        finalMemoryStream.Flush(); 
+        finalMemoryStream.Flush();
         finalMemoryStream.Position = 0;
-        
-          ////////////////////
-         // Save PDF to s3 //
+
+        ////////////////////
+        // Save PDF to s3 //
         ////////////////////
         // Create a variable for object path with auth0| removed 
         string pdfObjectPath = $"cases/{caseId}/{userId}/export/Lighthouse Notes Export {sCase.DisplayName}.pdf";
