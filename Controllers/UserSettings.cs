@@ -54,6 +54,8 @@ public class UsersSettingsController : ControllerBase
         // Return the settings
         return new API.Settings
         {
+            Auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value!,
+            OrganizationId = organizationId,
             UserId = _sqids.Encode(userId),
             TimeZone = userSettings.TimeZone,
             DateFormat = userSettings.DateFormat,

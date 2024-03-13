@@ -23,6 +23,8 @@ public class UserSettings
 
 public class Settings
 {
+    public required string Auth0UserId { get; init; }
+    public required string OrganizationId  { get; init; }
     public required string UserId { get; init; }
     public required string TimeZone { get; init; }
     public required string DateFormat { get; init; }
