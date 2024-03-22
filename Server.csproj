@@ -6,8 +6,9 @@
         <NoWarn>$(NoWarn);1591</NoWarn>
         <Nullable>enable</Nullable>
         <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-        <PublishSingleFile>true</PublishSingleFile>
+        <DebugType>embedded</DebugType>
         <Version>0.5.0</Version>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     </PropertyGroup>
 
     <ItemGroup>
