@@ -1,9 +1,14 @@
-﻿FROM mcr.microsoft.com/dotnet/aspnet:7.0 AS base
+﻿FROM mcr.microsoft.com/dotnet/aspnet:7.0-alpine3.17 AS base
+RUN apk update && \
+  apk upgrade && \
+  apk add --update ca-certificates && \
+  apk add chromium --update-cache --repository http://nl.alpinelinux.org/alpine/edge/community \
+  rm -rf /var/cache/apk/*
 WORKDIR /app
 EXPOSE 80
 EXPOSE 443
 
-FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:7.0-alpine3.17 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["Server.csproj", "./"]
