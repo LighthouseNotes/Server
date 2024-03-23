@@ -17,7 +17,7 @@ public class PDFFuctions
         HtmlToPdfConverter htmlConverter = new();
 
         // Set temp location
-        string baseUrl = Environment.CurrentDirectory;
+        string baseUrl = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location)!;
 
         //Initialize Blink Converter Settings
         BlinkConverterSettings blinkConverterSettings = new();
