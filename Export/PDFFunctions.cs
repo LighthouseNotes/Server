@@ -163,12 +163,12 @@ public class PDFFuctions
         //Create PDF page template element for header with bounds.
         PdfPageTemplateElement header = new(new RectangleF(0, 0, pageWidth, 50));
 
-        PdfFont bigFont = new PdfStandardFont(PdfFontFamily.Helvetica, 11);
+        PdfFont font = new PdfStandardFont(PdfFontFamily.Helvetica, 10);
         PdfBrush brush = new PdfSolidBrush(Color.Black);
         // Draw the header case name element
         string caseText = displayName;
-        SizeF caseTextSize = bigFont.MeasureString(caseText);
-        header.Graphics.DrawString(caseText, bigFont, brush,
+        SizeF caseTextSize = font.MeasureString(caseText);
+        header.Graphics.DrawString(caseText, font, brush,
             new RectangleF(new PointF(pageWidth - caseTextSize.Width, 25), caseTextSize));
 
         // Draw header logo element
@@ -185,19 +185,19 @@ public class PDFFuctions
         //Create PDF page template element for footer with bounds.
         PdfPageTemplateElement footer = new(new RectangleF(0, 0, pageWidth, 50));
 
-        PdfFont smallFont = new PdfStandardFont(PdfFontFamily.Helvetica, 8);
+        PdfFont font = new PdfStandardFont(PdfFontFamily.Helvetica, 10);
         PdfBrush brush = new PdfSolidBrush(Color.Black);
 
         // Page number
-        PdfPageNumberField pageNumber = new(smallFont, PdfBrushes.Black);
-        PdfPageCountField count = new(smallFont, PdfBrushes.Black);
-        PdfCompositeField compositeField = new(smallFont, PdfBrushes.Black, "Page {0} of {1}", pageNumber, count);
+        PdfPageNumberField pageNumber = new(font, brush);
+        PdfPageCountField count = new(font, brush);
+        PdfCompositeField compositeField = new(font, brush, "Page {0} of {1}", pageNumber, count);
         compositeField.Draw(footer.Graphics, new PointF(0, 25));
 
         // Timezone text
         string timeZoneText = timeZone;
-        SizeF timeZoneTextSize = smallFont.MeasureString(timeZoneText);
-        footer.Graphics.DrawString(timeZoneText, smallFont, brush,
+        SizeF timeZoneTextSize = font.MeasureString(timeZoneText);
+        footer.Graphics.DrawString(timeZoneText, font, brush,
             new RectangleF(new PointF(pageWidth - timeZoneTextSize.Width, 25), timeZoneTextSize));
 
         return footer;
