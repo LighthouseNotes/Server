@@ -18,6 +18,7 @@
         <PackageReference Include="HtmlAgilityPack" Version="1.11.57"/>
         <PackageReference Include="MeiliSearch" Version="0.14.7"/>
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.15"/>
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="7.0.17" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.15"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.15">
             <PrivateAssets>all</PrivateAssets>

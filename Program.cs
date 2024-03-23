@@ -3,11 +3,12 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Formatters;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
+using StackExchange.Redis;
 
 // Version and copyright message
 Console.ForegroundColor = ConsoleColor.Cyan;
@@ -32,6 +33,16 @@ builder.Services.AddRouting(options =>
     options.LowercaseQueryStrings = true;
 });
 
+// Use Redis for key storage if running in production
+if (builder.Environment.IsProduction())
+{
+    ConnectionMultiplexer redis = ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Redis") ??
+                                                                throw new InvalidOperationException(
+                                                                    "Connection string 'Redis' not found in appssettings.json or environment variable!"));
+    builder.Services.AddDataProtection()
+        .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
+}
+
 // Add Certificate forwarding - for Nginx reverse proxy 
 builder.Services.AddCertificateForwarding(options =>
 {
@@ -50,14 +61,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
         ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 });
 
-// Add cross origin for local development
+// Add cross origin
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(
         corsPolicyBuilder =>
         {
             corsPolicyBuilder.WithOrigins(builder.Configuration["WebApp"] ?? throw new InvalidOperationException(
-                    "Connection string 'DatabaseContext' not found in appssettings.json"))
+                    "'WebApp' not found in appssettings.json or environment variable!"))
                 .AllowAnyMethod()
                 .AllowAnyHeader()
                 .AllowCredentials();
@@ -68,9 +79,9 @@ builder.Services.AddCors(options =>
 builder.Services.AddDbContext<DatabaseContext>(options =>
 {
     // Get connection string for database from appsettings.json, if it is null throw invalid operation exception and use query splitting 
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DatabaseContext") ??
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Database") ??
                       throw new InvalidOperationException(
-                          "Connection string 'DatabaseContext' not found in appssettings.json"), o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
+                          "Connection string 'Database' not found in appssettings.json or environment variable!"), o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
 
     // If environment is development enable sensitive data logging
     if (builder.Environment.IsDevelopment())
@@ -82,7 +93,7 @@ builder.Services.AddSingleton(new SqidsEncoder<long>(new SqidsOptions
 {
     // Get alphabet from appsettings.json, if it is null throw  invalid operation exception 
     Alphabet = builder.Configuration["Sqids:Alphabet"] ??
-               throw new InvalidOperationException("Squid alphabet `Sqids:Alphabet` not found in appssettings.json"),
+               throw new InvalidOperationException("Squid alphabet `Sqids:Alphabet` not found in appssettings.json or environment variable!"),
 
     // Get min length
     MinLength = Convert.ToInt32(builder.Configuration["Sqids:MinLength"])
@@ -166,11 +177,9 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Title = "Lighthouse Notes Server API",
         Description = "An ASP.NET Core Web API for managing Lighthouse Notes",
-        TermsOfService = new Uri("https://example.com/terms"),
         Contact = new OpenApiContact
         {
             Name = "Ben Davies",
-            Url = new Uri("https://example.com/contact")
         },
         License = new OpenApiLicense
         {
@@ -207,8 +216,8 @@ builder.Services.AddSwaggerGen(options =>
 // Configure Audit Logging
 Configuration.Setup()
     .UsePostgreSql(config => config
-        .ConnectionString(builder.Configuration.GetConnectionString("DatabaseContext") ??
-                          throw new InvalidOperationException("Connection string 'DatabaseContext' not found."))
+        .ConnectionString(builder.Configuration.GetConnectionString("Database") ??
+                          throw new InvalidOperationException("Connection string 'Database' not found in appssettings.json or environment variable!"))
         .TableName("Event")
         .IdColumnName("Id")
         .DataColumn("Data")
