@@ -9,15 +9,20 @@ using Syncfusion.Pdf.HtmlToPdf;
 
 namespace Server.Export;
 
-public class PDFFuctions
+public class PDFFunctions
 {
+    private readonly IConfiguration _configuration;
+    public PDFFunctions(IConfiguration configuration)
+    {
+        _configuration = configuration;
+    }
     public async Task<MemoryStream> GeneratePDFCoverPage(string html, string caseDisplayName)
     {
         // Initialize HTML to PDF converter
         HtmlToPdfConverter htmlConverter = new();
 
-        // Set temp location
-        string baseUrl = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location)!;
+        // Set base location
+        string baseUrl = Path.GetDirectoryName($"{_configuration["AppRoot"]}/")!;
 
         //Initialize Blink Converter Settings
         BlinkConverterSettings blinkConverterSettings = new();
@@ -80,7 +85,7 @@ public class PDFFuctions
         HtmlToPdfConverter htmlConverter = new();
 
         // Set temp location
-        string baseUrl = Environment.CurrentDirectory;
+        string baseUrl = Path.GetDirectoryName($"{_configuration["AppRoot"]}/")!;
 
         //Initialize Blink Converter Settings
         BlinkConverterSettings blinkConverterSettings = new();

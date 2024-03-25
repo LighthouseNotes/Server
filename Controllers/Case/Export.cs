@@ -18,13 +18,15 @@ public class ExportController : ControllerBase
     private readonly DatabaseContext _dbContext;
     private readonly ILoggerFactory _logger;
     private readonly SqidsEncoder<long> _sqids;
+    private readonly IConfiguration _configuration;
 
-    public ExportController(DatabaseContext dbContext, ILoggerFactory logger, SqidsEncoder<long> sqids)
+    public ExportController(DatabaseContext dbContext, ILoggerFactory logger, SqidsEncoder<long> sqids, IConfiguration configuration)
     {
         _dbContext = dbContext;
         _auditContext = new AuditScopeFactory();
         _logger = logger;
         _sqids = sqids;
+        _configuration = configuration;
     }
 
     // GET:  /case/5/export
@@ -221,15 +223,15 @@ public class ExportController : ControllerBase
             .Render();
 
         // Use export helpers
-        PDFFuctions pdfFuctions = new();
+        PDFFunctions pdfFunctions = new(_configuration);
 
         // Create cover page PDF and load it
-        MemoryStream coverPDFStream = await pdfFuctions.GeneratePDFCoverPage(coverHTML, model.DisplayName);
+        MemoryStream coverPDFStream = await pdfFunctions.GeneratePDFCoverPage(coverHTML, model.DisplayName);
         PdfLoadedDocument coverPDF = new(coverPDFStream);
 
         // Create content PDF and load it
         MemoryStream contentPDFStream =
-            await pdfFuctions.GeneratePDF(contentHTML, model.DisplayName, timeZone.DisplayName);
+            await pdfFunctions .GeneratePDF(contentHTML, model.DisplayName, timeZone.DisplayName);
         PdfLoadedDocument contentPDF = new(contentPDFStream);
 
         // Create final PDF document

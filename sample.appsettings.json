@@ -1,19 +1,19 @@
 {
-  "Logging": {
-    "LogLevel": {
-      "Default": "Warning",
-      "Microsoft.AspNetCore": "Warning",
-      "Microsoft.Hosting.Lifetime": "Warning"
-    }
-  },
   "AllowedHosts": "*",
-  "Urls": "http://localhost:6000",
+  "AppRoot": "/opt/lighthousenotes/server",
   "Auth0": {
     "Domain": "example.auth0.com",
     "Audience": "https://api.example.com"
   },
   "ConnectionStrings": {
     "DatabaseContext": "Host=localhost; Database=lighthousenotes; Username=example; Password=Example!2"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.Hosting.Lifetime": "Warning"
+    }
   },
   "Sqids": {
     "Alphabet": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
@@ -22,5 +22,6 @@
   "Syncfusion": {
     "LicenseKey": "License"
   },
+  "Urls": "http://localhost:6000",
   "WebApp": "https://app.example.com"
 }
