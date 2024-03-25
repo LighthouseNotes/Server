@@ -39,7 +39,7 @@ Lighthouse is a university dissertation project which implements a source availa
 - Localization settings
 - Audit log
 
-This repository holds the source code and builds for the API server part of the application. 
+**This repository holds the source code and builds for the API server part of the application.**
 
 ## References
 
