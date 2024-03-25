@@ -7,7 +7,7 @@
         <Nullable>enable</Nullable>
         <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
         <DebugType>embedded</DebugType>
-        <Version>0.5.4</Version>
+        <Version>0.5.5</Version>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     </PropertyGroup>
 
