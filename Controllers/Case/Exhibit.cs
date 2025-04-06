@@ -3,18 +3,9 @@
 [Route("/case/{caseId}")]
 [ApiController]
 [AuditApi(EventTypeName = "HTTP")]
-public class ExhibitController : ControllerBase
+public class ExhibitController(DatabaseContext dbContext, SqidsEncoder<long> sqids) : ControllerBase
 {
-    private readonly AuditScopeFactory _auditContext;
-    private readonly DatabaseContext _dbContext;
-    private readonly SqidsEncoder<long> _sqids;
-
-    public ExhibitController(DatabaseContext dbContext, SqidsEncoder<long> sqids)
-    {
-        _dbContext = dbContext;
-        _auditContext = new AuditScopeFactory();
-        _sqids = sqids;
-    }
+    private readonly AuditScopeFactory _auditContext = new();
 
     // GET: /case/?/exhibits
     [HttpGet("exhibits")]
@@ -22,40 +13,36 @@ public class ExhibitController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<IEnumerable<API.Exhibit>>> GetExhibits(string caseId, [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10, [FromQuery(Name = "sort")] string rawSort = "")
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+            return Problem("Preflight checks failed with an unknown error!");
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        string emailAddress = preflightResponse.Details.EmailAddress;
+        long rawCaseId = sqids.Decode(caseId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.Exhibits)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
@@ -66,9 +53,9 @@ public class ExhibitController : ControllerBase
         if (!string.IsNullOrWhiteSpace(rawSort)) sortList = rawSort.Split(',').ToList();
 
         // Set pagination headers
-        HttpContext.Response.Headers.Add("X-Page", page.ToString());
-        HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
-        HttpContext.Response.Headers.Add("X-Total-Count", sCase.Exhibits.Count.ToString());
+        HttpContext.Response.Headers.Append("X-Page", page.ToString());
+        HttpContext.Response.Headers.Append("X-Per-Page", pageSize.ToString());
+        HttpContext.Response.Headers.Append("X-Total-Count", sCase.Exhibits.Count.ToString());
 
 
         // Get the user's time zone
@@ -76,11 +63,11 @@ public class ExhibitController : ControllerBase
 
         if (pageSize == 0)
         {
-            HttpContext.Response.Headers.Add("X-Total-Pages", "0");
-            // Return the cases exhibits 
+            HttpContext.Response.Headers.Append("X-Total-Pages", "0");
+            // Return the cases exhibits
             return sCase.Exhibits.Select(e => new API.Exhibit
             {
-                Id = _sqids.Encode(e.Id),
+                Id = sqids.Encode(e.Id),
                 Reference = e.Reference,
                 Description = e.Description,
                 DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
@@ -89,15 +76,15 @@ public class ExhibitController : ControllerBase
             }).ToList();
         }
 
-        HttpContext.Response.Headers.Add("X-Total-Pages",
+        HttpContext.Response.Headers.Append("X-Total-Pages",
             ((sCase.Exhibits.Count + pageSize - 1) / pageSize).ToString());
 
-        // If no sort is provided or two many sort parameters are provided, sort by accessed time
+        // If no sort is provided or too many sort parameters are provided, sort by accessed time
         if (sortList == null || sortList.Count != 1)
-            // Return the cases exhibits 
+            // Return the cases exhibits
             return sCase.Exhibits.Select(e => new API.Exhibit
             {
-                Id = _sqids.Encode(e.Id),
+                Id = sqids.Encode(e.Id),
                 Reference = e.Reference,
                 Description = e.Description,
                 DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
@@ -107,10 +94,10 @@ public class ExhibitController : ControllerBase
 
         string[] sort = sortList[0].Split(" ");
         if (sort[1] == "asc")
-            // Return the cases exhibits 
+            // Return the cases exhibits
             return sCase.Exhibits.Select(e => new API.Exhibit
                 {
-                    Id = _sqids.Encode(e.Id),
+                    Id = sqids.Encode(e.Id),
                     Reference = e.Reference,
                     Description = e.Description,
                     DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
@@ -121,10 +108,10 @@ public class ExhibitController : ControllerBase
                 .ToList();
 
         if (sort[1] == "desc")
-            // Return the cases exhibits 
+            // Return the cases exhibits
             return sCase.Exhibits.Select(e => new API.Exhibit
                 {
-                    Id = _sqids.Encode(e.Id),
+                    Id = sqids.Encode(e.Id),
                     Reference = e.Reference,
                     Description = e.Description,
                     DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(e.DateTimeSeizedProduced, timeZone),
@@ -143,40 +130,36 @@ public class ExhibitController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<API.Exhibit>> GetExhibit(string caseId, string exhibitId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+            return Problem("Preflight checks failed with an unknown error!");
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
-        long rawCaseId = _sqids.Decode(caseId)[0];
-        long rawExhibitId = _sqids.Decode(exhibitId)[0];
+        string emailAddress = preflightResponse.Details.EmailAddress;
+        long rawCaseId = sqids.Decode(caseId)[0];
+        long rawExhibitId = sqids.Decode(exhibitId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.Exhibits)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
         // Fetch exhibit from the database
@@ -192,7 +175,7 @@ public class ExhibitController : ControllerBase
         // Return the exhibit details
         return new API.Exhibit
         {
-            Id = _sqids.Encode(exhibit.Id),
+            Id = sqids.Encode(rawExhibitId),
             Reference = exhibit.Reference,
             Description = exhibit.Description,
             DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(exhibit.DateTimeSeizedProduced, timeZone),
@@ -207,32 +190,28 @@ public class ExhibitController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "sio,organization-administrator")]
+    [Authorize]
     public async Task<ActionResult<API.Exhibit>> CreateExhibit(string caseId, API.AddExhibit exhibit)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+            return Problem("Preflight checks failed with an unknown error!");
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
         // As datetime are provided in UTC, make sure kind is set to UTC so stored in the database as UTC
         exhibit.DateTimeSeizedProduced = DateTime.SpecifyKind(exhibit.DateTimeSeizedProduced, DateTimeKind.Utc);
@@ -247,37 +226,38 @@ public class ExhibitController : ControllerBase
             SeizedBy = exhibit.SeizedBy
         };
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.Exhibits)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
-        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // If case does not exist then return an HTTP 404 error
         // The case might not exist or the user does not have access to the case
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+
         // Add the exhibit to the case
         sCase.Exhibits.Add(newExhibit);
 
         // Save changes to the database
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
-        // Log the creation of a exhibit
+        // Log the creation of an exhibit
         await _auditContext.LogAsync("Lighthouse Notes",
             new
             {
                 Action =
                     $"`{userNameJob}` created the exhibit: `{newExhibit.Reference}` in the case: `{sCase.DisplayName}`.",
-                UserID = userId, OrganizationID = organizationId
+                EmailAddress = emailAddress
             });
 
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
-        // Create the exhibit details response 
+        // Create the exhibit details response
         API.Exhibit createdExhibit = new()
         {
-            Id = _sqids.Encode(newExhibit.Id),
+            Id = sqids.Encode(newExhibit.Id),
             Reference = newExhibit.Reference,
             Description = newExhibit.Description,
             DateTimeSeizedProduced = TimeZoneInfo.ConvertTimeFromUtc(newExhibit.DateTimeSeizedProduced, timeZone),
@@ -292,45 +272,30 @@ public class ExhibitController : ControllerBase
 
     private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user ID from claim
-        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user email from JWT claim
+        string? emailAddress = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
 
-        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
-        if (auth0UserId == null)
-            return new PreflightResponse
-                { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
+        // If user email is null then it does not exist in JWT so return an HTTP 400 error
+        if (string.IsNullOrEmpty(emailAddress))
+            return new PreflightResponse { Error = BadRequest("Email Address cannot be found in the JSON Web Token (JWT)!") };
 
-        // Get organization ID from claim
-        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-
-        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
-        if (organizationId == null)
-            return new PreflightResponse
-                { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
-
-        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
-        PreflightResponseDetails? userQueryResult = await _dbContext.User
-            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+        // Query user details including roles and application settings
+        PreflightResponseDetails? preflightData = await dbContext.User
+            .Where(u => u.EmailAddress == emailAddress)
+            .Include(u => u.Settings)
             .Select(u => new PreflightResponseDetails
             {
-                OrganizationId = u.Organization.Id,
-                UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
-                UserSettings = u.Settings
-            }).SingleOrDefaultAsync();
+                EmailAddress = u.EmailAddress, UserNameJob = $"{u.DisplayName} ({u.JobTitle})", UserSettings = u.Settings
+            })
+            .SingleOrDefaultAsync();
 
-        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
-        if (userQueryResult == null)
-            return new PreflightResponse
-            {
-                Error = NotFound(
-                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
-            };
+        // If query result is null then the user does not exist
+        if (preflightData == null)
+            return new PreflightResponse { Error = NotFound($"A user with the user email: `{emailAddress}` was not found!") }
+                ;
 
-        return new PreflightResponse
-        {
-            Details = userQueryResult
-        };
+        // Return preflight response
+        return new PreflightResponse { Details = preflightData };
     }
 
     private class PreflightResponse
@@ -341,8 +306,7 @@ public class ExhibitController : ControllerBase
 
     private class PreflightResponseDetails
     {
-        public required string OrganizationId { get; init; }
-        public long UserId { get; init; }
+        public required string EmailAddress { get; init; }
         public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }

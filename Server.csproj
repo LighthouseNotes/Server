@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <NoWarn>$(NoWarn);1591</NoWarn>
         <Nullable>enable</Nullable>
@@ -12,24 +12,27 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Audit.NET.PostgreSql" Version="22.1.0"/>
-        <PackageReference Include="Audit.WebApi" Version="21.0.3"/>
-        <PackageReference Include="BlazorTemplater" Version="1.5.1"/>
-        <PackageReference Include="HtmlAgilityPack" Version="1.11.57"/>
-        <PackageReference Include="MeiliSearch" Version="0.14.7"/>
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.15"/>
-        <PackageReference Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="7.0.17" />
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.15"/>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="7.0.15">
+        <PackageReference Include="Audit.NET" Version="27.5.1" />
+        <PackageReference Include="Audit.NET.PostgreSql" Version="27.5.1" />
+        <PackageReference Include="Audit.WebApi.Core" Version="27.5.1" />
+        <PackageReference Include="HtmlAgilityPack" Version="1.12.0"/>
+        <PackageReference Include="MeiliSearch" Version="0.16.0"/>
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.14"/>
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="8.0.14"/>
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.14"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.3">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="7.4.0"/>
-        <PackageReference Include="Minio" Version="6.0.0"/>
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="7.0.11"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.3">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.7.0"/>
+        <PackageReference Include="Minio" Version="6.0.4"/>
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4"/>
         <PackageReference Include="Sqids" Version="3.1.0"/>
-        <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0"/>
-        <PackageReference Include="Syncfusion.HtmlToPdfConverter.Net.Windows" Version="24.1.41"/>
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="8.1.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -55,10 +58,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Folder Include="Migrations\"/>
-    </ItemGroup>
-
-    <ItemGroup>
         <None Update="LICENSE">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
@@ -67,21 +66,17 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
         </None>
-        <None Update="Export\MudBlazor.min.css">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-        </None>
-        <None Update="Export\logo.jpg">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-        </None>
-        <None Update="Export\logo-black.png">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-        </None>
-        <None Update="Export\image-error.jpeg">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-        </None>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Folder Include="Migrations\"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <EditorConfigFiles Remove="C:\Users\bxdav\Source\Repos\Server\.editorconfig"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="C:\Users\bxdav\Source\Repos\Server\.editorconfig"/>
     </ItemGroup>
 </Project>

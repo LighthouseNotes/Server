@@ -8,24 +8,14 @@ namespace Server.Controllers.Case;
 [ApiController]
 [Route("/case")]
 [AuditApi(EventTypeName = "HTTP")]
-public class CaseController : ControllerBase
+public class CaseController(DatabaseContext dbContext, SqidsEncoder<long> sqids, IConfiguration configuration) : ControllerBase
 {
-    private readonly AuditScopeFactory _auditContext;
-    private readonly DatabaseContext _dbContext;
-    private readonly SqidsEncoder<long> _sqids;
-
-    public CaseController(DatabaseContext dbContext, SqidsEncoder<long> sqids)
-    {
-        _dbContext = dbContext;
-        _auditContext = new AuditScopeFactory();
-        _sqids = sqids;
-    }
-
+    private readonly AuditScopeFactory _auditContext = new();
 
     // GET: /cases
     [Route("/cases")]
     [HttpGet]
-    [Authorize(Roles = "user")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
@@ -37,25 +27,19 @@ public class CaseController : ControllerBase
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
-        if (preflightResponse.Details == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+        // If preflight checks details are null return an HTTP 500 error
+        if (preflightResponse.Details == null) return Problem("Preflight checks failed with an unknown error!");
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
         // Create sort list
         List<string>? sortList = null;
@@ -64,9 +48,8 @@ public class CaseController : ControllerBase
         if (!string.IsNullOrWhiteSpace(rawSort)) sortList = rawSort.Split(',').ToList();
 
         // Set pagination headers
-        HttpContext.Response.Headers.Add("X-Page", page.ToString());
-        HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
-
+        HttpContext.Response.Headers.Append("X-Page", page.ToString());
+        HttpContext.Response.Headers.Append("X-Per-Page", pageSize.ToString());
 
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
@@ -75,187 +58,171 @@ public class CaseController : ControllerBase
         {
             // Create Meilisearch Client
             MeilisearchClient meiliClient =
-                new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+                new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
             // Get the cases index
             Index index = meiliClient.Index("cases");
 
-            // Search the index for the string filtering by user id
+            // Search the index for the string filtering by email address (so we know the user has access to the case)
             ISearchable<Search.Case> searchResult = await index.SearchAsync<Search.Case>(
                 search,
                 new SearchQuery
                 {
-                    AttributesToSearchOn = new[]
-                        { "displayId", "name", "displayName", "sioDisplayName", "sioGivenName", "sioLastName" },
-                    AttributesToRetrieve = new[] { "id" },
-                    Filter = $"userIds = {userId}"
+                    AttributesToSearchOn =
+                        ["DisplayId", "name", "displayName", "sioDisplayName", "sioGivenName", "sioLastName"],
+                    AttributesToRetrieve = ["id"],
+                    Filter = $"emailAddresses = {emailAddress}"
                 }
             );
 
-            // Create a list of case Ids that contain a match 
+            // Create a list of case ids hat contain a match
             List<long> caseIds = searchResult.Hits.Select(c => c.Id).ToList();
 
-            HttpContext.Response.Headers.Add("X-Total-Count",
-                _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id))
+            HttpContext.Response.Headers.Append("X-Total-Count",
+                dbContext.Case.Count(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress) && caseIds.Contains(c.Id))
                     .ToString());
-            HttpContext.Response.Headers.Add("X-Total-Pages",
-                ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id)) +
+            HttpContext.Response.Headers.Append("X-Total-Pages",
+                ((dbContext.Case.Count(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress) && caseIds.Contains(c.Id)) +
                     pageSize - 1) / pageSize).ToString());
 
-            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId) && caseIds.Contains(c.Id))
+            return dbContext.Case.Where(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress) && caseIds.Contains(c.Id))
                 .OrderByDescending(c => c.Accessed)
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
+                .Include(c => c.Users).ThenInclude(cu => cu.User).Select(c => new API.Case
                 {
-                    Id = _sqids.Encode(c.Id),
+                    Id = sqids.Encode(c.Id),
                     DisplayId = c.DisplayId,
                     Name = c.Name,
                     DisplayName = c.DisplayName,
-                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName,
-                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).Single(),
+                    LeadInvestigator =
+                        c.Users.Where(cu => cu.IsLeadInvestigator).Select(cu => new API.User
+                        {
+                            EmailAddress = cu.User.EmailAddress,
+                            JobTitle = cu.User.JobTitle,
+                            DisplayName = cu.User.DisplayName,
+                            GivenName = cu.User.GivenName,
+                            LastName = cu.User.LastName
+                        }).Single(),
                     Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
                     Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
                     Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
                     Status = c.Status,
                     Users = c.Users.Select(cu => new API.User
                     {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                        EmailAddress = cu.User.EmailAddress,
+                        JobTitle = cu.User.JobTitle,
+                        DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName,
+                        LastName = cu.User.LastName
                     }).ToList()
                 }).ToList();
         }
 
-        HttpContext.Response.Headers.Add("X-Total-Count",
-            _dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)).ToString());
-        HttpContext.Response.Headers.Add("X-Total-Pages",
-            ((_dbContext.Case.Count(c => c.Users.Any(cu => cu.User.Id == userId)) + pageSize - 1) / pageSize)
+        HttpContext.Response.Headers.Append("X-Total-Count",
+            dbContext.Case.Count(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress)).ToString());
+        HttpContext.Response.Headers.Append("X-Total-Pages",
+            ((dbContext.Case.Count(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress)) + pageSize - 1) / pageSize)
             .ToString());
 
-        // If no sort is provided or two many sort parameters are provided, sort by accessed time
+        // If no sort is provided or too many sort parameters are provided, sort by accessed time
         if (sortList == null || sortList.Count != 1)
-            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
+            return dbContext.Case.Where(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
                 .OrderByDescending(c => c.Accessed)
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
+                .Include(c => c.Users).ThenInclude(cu => cu.User).Select(c => new API.Case
                 {
-                    Id = _sqids.Encode(c.Id),
+                    Id = sqids.Encode(c.Id),
                     DisplayId = c.DisplayId,
                     Name = c.Name,
                     DisplayName = c.DisplayName,
-                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName,
-                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).Single(),
+                    LeadInvestigator =
+                        c.Users.Where(cu => cu.IsLeadInvestigator).Select(cu => new API.User
+                        {
+                            EmailAddress = cu.User.EmailAddress,
+                            JobTitle = cu.User.JobTitle,
+                            DisplayName = cu.User.DisplayName,
+                            GivenName = cu.User.GivenName,
+                            LastName = cu.User.LastName
+                        }).Single(),
                     Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
                     Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
                     Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
                     Status = c.Status,
                     Users = c.Users.Select(cu => new API.User
                     {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                        EmailAddress = cu.User.EmailAddress,
+                        JobTitle = cu.User.JobTitle,
+                        DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName,
+                        LastName = cu.User.LastName
                     }).ToList()
                 }).ToList();
 
         string[] sort = sortList[0].Split(" ");
 
         if (sort[1] == "asc")
-            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
+            return dbContext.Case.Where(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
                 .OrderBy(c => EF.Property<object>(c, sort[0]))
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
+                .Include(c => c.Users).ThenInclude(cu => cu.User).Select(c => new API.Case
                 {
-                    Id = _sqids.Encode(c.Id),
+                    Id = sqids.Encode(c.Id),
                     DisplayId = c.DisplayId,
                     Name = c.Name,
                     DisplayName = c.DisplayName,
-                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName,
-                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).Single(),
+                    LeadInvestigator =
+                        c.Users.Where(cu => cu.IsLeadInvestigator).Select(cu => new API.User
+                        {
+                            EmailAddress = cu.User.EmailAddress,
+                            JobTitle = cu.User.JobTitle,
+                            DisplayName = cu.User.DisplayName,
+                            GivenName = cu.User.GivenName,
+                            LastName = cu.User.LastName
+                        }).Single(),
                     Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
                     Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
                     Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
                     Status = c.Status,
                     Users = c.Users.Select(cu => new API.User
                     {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                        EmailAddress = cu.User.EmailAddress,
+                        JobTitle = cu.User.JobTitle,
+                        DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName,
+                        LastName = cu.User.LastName
                     }).ToList()
                 }).ToList();
 
         if (sort[1] == "desc")
-            return _dbContext.Case.Where(c => c.Users.Any(cu => cu.User.Id == userId))
+            return dbContext.Case.Where(c => c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
                 .OrderByDescending(c => EF.Property<object>(c, sort[0]))
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Include(c => c.Users).ThenInclude(cu => cu.User).ThenInclude(u => u.Roles).Select(c => new API.Case
+                .Include(c => c.Users).ThenInclude(cu => cu.User).Select(c => new API.Case
                 {
-                    Id = _sqids.Encode(c.Id),
+                    Id = sqids.Encode(c.Id),
                     DisplayId = c.DisplayId,
                     Name = c.Name,
                     DisplayName = c.DisplayName,
-                    SIO = c.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
-                    {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName,
-                        LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
-                    }).Single(),
+                    LeadInvestigator =
+                        c.Users.Where(cu => cu.IsLeadInvestigator).Select(cu => new API.User
+                        {
+                            EmailAddress = cu.User.EmailAddress,
+                            JobTitle = cu.User.JobTitle,
+                            DisplayName = cu.User.DisplayName,
+                            GivenName = cu.User.GivenName,
+                            LastName = cu.User.LastName
+                        }).Single(),
                     Modified = TimeZoneInfo.ConvertTimeFromUtc(c.Modified, timeZone),
                     Accessed = TimeZoneInfo.ConvertTimeFromUtc(c.Accessed, timeZone),
                     Created = TimeZoneInfo.ConvertTimeFromUtc(c.Created, timeZone),
                     Status = c.Status,
                     Users = c.Users.Select(cu => new API.User
                     {
-                        Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                        JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                        GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                        ProfilePicture = cu.User.ProfilePicture,
-                        Organization = new API.Organization
-                            { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                        Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                        EmailAddress = cu.User.EmailAddress,
+                        JobTitle = cu.User.JobTitle,
+                        DisplayName = cu.User.DisplayName,
+                        GivenName = cu.User.GivenName,
+                        LastName = cu.User.LastName
                     }).ToList()
                 }).ToList();
 
@@ -270,85 +237,73 @@ public class CaseController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<API.Case>> GetCase(string caseId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
-        if (preflightResponse.Details == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+        // If preflight checks details are null return an HTTP 500 error
+        if (preflightResponse.Details == null) return Problem("Preflight checks failed with an unknown error!");
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        string emailAddress = preflightResponse.Details.EmailAddress;
+        long rawCaseId = sqids.Decode(caseId)[0];
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.Users)
             .ThenInclude(cu => cu.User)
-            .ThenInclude(u => u.Organization)
             .Include(c => c.Users)
             .ThenInclude(cu => cu.User)
-            .ThenInclude(u => u.Roles)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
-        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // If case does not exist then return an HTTP 404 error
         // The case might not exist or the user does not have access to the case
-        // Return requested case details
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
 
         // Update the access time
         sCase.Accessed = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         return new API.Case
         {
-            Id = _sqids.Encode(sCase.Id),
+            Id = sqids.Encode(sCase.Id),
             DisplayId = sCase.DisplayId,
             Name = sCase.Name,
             DisplayName = sCase.DisplayName,
-            SIO = sCase.Users.Where(cu => cu.IsSIO).Select(cu => new API.User
-            {
-                Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                GivenName = cu.User.GivenName,
-                LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                ProfilePicture = cu.User.ProfilePicture,
-                Organization = new API.Organization
-                    { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                Roles = cu.User.Roles.Select(r => r.Name).ToList()
-            }).Single(),
+            LeadInvestigator =
+                sCase.Users.Where(cu => cu.IsLeadInvestigator).Select(cu => new API.User
+                {
+                    EmailAddress = cu.User.EmailAddress,
+                    JobTitle = cu.User.JobTitle,
+                    DisplayName = cu.User.DisplayName,
+                    GivenName = cu.User.GivenName,
+                    LastName = cu.User.LastName
+                }).Single(),
             Modified = TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
             Accessed = TimeZoneInfo.ConvertTimeFromUtc(sCase.Accessed, timeZone),
             Created = TimeZoneInfo.ConvertTimeFromUtc(sCase.Created, timeZone),
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
-                Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                ProfilePicture = cu.User.ProfilePicture,
-                Organization = new API.Organization
-                    { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                EmailAddress = cu.User.EmailAddress,
+                JobTitle = cu.User.JobTitle,
+                DisplayName = cu.User.DisplayName,
+                GivenName = cu.User.GivenName,
+                LastName = cu.User.LastName
             }).ToList()
         };
     }
@@ -360,44 +315,40 @@ public class CaseController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "organization-administrator")]
+    [Authorize]
     public async Task<ActionResult> UpdateCase(string caseId, API.UpdateCase updatedCase)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email adress
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.Users)
             .ThenInclude(cu => cu.User)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
-        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // If case does not exist then return an HTTP 404 error
         // The case might not exist or the user does not have access to the case
-        // Update values in the database if the provided values are not null
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
 
         if (updatedCase.Name != null && updatedCase.Name != sCase.Name)
         {
@@ -407,7 +358,7 @@ public class CaseController : ControllerBase
                 {
                     Action =
                         $"Case name was updated from `{sCase.Name}` to `{updatedCase.Name}` for the case with the ID `{sCase.DisplayId}` by `{userNameJob}`.",
-                    UserID = userId, OrganizationID = organizationId
+                    EmailAddress = emailAddress
                 });
 
             // Update case name in the database
@@ -425,7 +376,7 @@ public class CaseController : ControllerBase
                 {
                     Action =
                         $"Case ID was updated from `{sCase.DisplayId}` to `{updatedCase.DisplayId}` for the case with the name `{sCase.Name}` by `{userNameJob}`.",
-                    UserID = userId, OrganizationID = organizationId
+                    EmailAddress = emailAddress
                 });
 
             // Update case ID in the database
@@ -443,104 +394,98 @@ public class CaseController : ControllerBase
                 {
                     Action =
                         $"Case status was updated from `{sCase.Status}` to `{updatedCase.Status}`  for the case `{sCase.DisplayName}` by `{userNameJob}`.",
-                    UserID = userId, OrganizationID = organizationId
+                    EmailAddress = emailAddress
                 });
 
             // Update case status in the database
             sCase.Status = updatedCase.Status;
         }
 
-        // If a new SIO user is provided then remove the current SIO and update
-        if (updatedCase.SIOUserId != null && _sqids.Decode(updatedCase.SIOUserId)[0] !=
-            sCase.Users.SingleOrDefault(cu => cu.IsSIO)!.User.Id)
+        // If a new LeadInvestigator user is provided then remove the current LeadInvestigator and update
+        if (updatedCase.LeadInvestigatorEmailAddress != null && updatedCase.LeadInvestigatorEmailAddress !=
+            sCase.Users.SingleOrDefault(cu => cu.IsLeadInvestigator)!.User.EmailAddress)
         {
-            // Get SIO user ID from squid 
-            long rawSIOUserId = _sqids.Decode(updatedCase.SIOUserId)[0];
+            // Check new LeadInvestigator user exists
+            Database.User? newLeadInvestigator =
+                await dbContext.User.Where(u => u.EmailAddress == updatedCase.LeadInvestigatorEmailAddress).FirstOrDefaultAsync();
 
-            // Check new SIO user exists 
-            Database.User? newSIO =
-                await _dbContext.User.Where(u => u.Id == rawSIOUserId).FirstOrDefaultAsync();
-
-            if (newSIO == null)
+            if (newLeadInvestigator == null)
                 return Unauthorized(
-                    $"A user with the ID `{updatedCase.SIOUserId}` was not found in the organization with the ID `{organizationId}`!");
+                    $"A user with the ID `{updatedCase.LeadInvestigatorEmailAddress}` was not found!");
 
-            // Remove current SIO users access
-            Database.CaseUser oldSIO = sCase.Users.Single(cu => cu.IsSIO);
+            // Remove current LeadInvestigator users access
+            Database.CaseUser oldLeadInvestigator = sCase.Users.Single(cu => cu.IsLeadInvestigator);
 
-            // Log removal of SIO user
+            // Log removal of LeadInvestigator user
             await _auditContext.LogAsync("Lighthouse Notes",
                 new
                 {
                     Action =
-                        $" `SIO {oldSIO.User.DisplayName}  ({oldSIO.User.JobTitle})` was removed from the case `{sCase.DisplayName}` by `{userNameJob}`.",
-                    UserID = userId, OrganizationID = organizationId
+                        $" `LeadInvestigator {oldLeadInvestigator.User.DisplayName}  ({oldLeadInvestigator.User.JobTitle})` was removed from the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                    EmailAddress = emailAddress
                 });
 
-            // Set old SIO user to false
-            oldSIO.IsSIO = false;
+            // Set old LeadInvestigator user to false
+            oldLeadInvestigator.IsLeadInvestigator = false;
 
-            // Log new SIO user
+            // Log new LeadInvestigator user
             await _auditContext.LogAsync("Lighthouse Notes",
                 new
                 {
                     Action =
-                        $" `SIO {newSIO.DisplayName} {newSIO.JobTitle}` is now the SIO for the case `{sCase.DisplayName}` this change was made by `{userNameJob}`.",
-                    UserID = userId, OrganizationID = organizationId
+                        $" `LeadInvestigator {newLeadInvestigator.DisplayName} {newLeadInvestigator.JobTitle}` is now the LeadInvestigator for the case `{sCase.DisplayName}` this change was made by `{userNameJob}`.",
+                    EmailAddress = emailAddress
                 });
 
-            // If new sio does not already have access to the case, add them as the SIO
-            if (sCase.Users.Any(cu => cu.User.Id == newSIO.Id) == false)
+            // If new sio does not already have access to the case, add them as the LeadInvestigator
+            if (sCase.Users.Any(cu => cu.User.EmailAddress == newLeadInvestigator.EmailAddress) == false)
             {
-                await _dbContext.CaseUser.AddAsync(new Database.CaseUser()
+                await dbContext.CaseUser.AddAsync(new Database.CaseUser
                 {
-                    Case = sCase,
-                    User = newSIO,
-                    IsSIO = true
+                    Case = sCase, User = newLeadInvestigator, IsLeadInvestigator = true
                 });
 
-                // Log the SIO user given access
+                // Log the LeadInvestigator user given access
                 await _auditContext.LogAsync("Lighthouse Notes",
                     new
                     {
                         Action =
-                            $" `SIO {newSIO.DisplayName} ({newSIO.JobTitle})` was given access to the case `{sCase.DisplayName}` by `{userNameJob}`.",
-                        UserID = userId, OrganizationID = organizationId
+                            $" `LeadInvestigator {newLeadInvestigator.DisplayName} ({newLeadInvestigator.JobTitle})` was given access to the case `{sCase.DisplayName}` by `{userNameJob}`.",
+                        EmailAddress = emailAddress
                     });
             }
-            // Else the user already has access to the case so just set IsSIO to true
+            // Else the user already has access to the case so just set IsLeadInvestigator to true
             else
             {
-                // Set new SIO user to true
-                sCase.Users.Single(cu => cu.User.Id == newSIO.Id).IsSIO = true;
+                // Set new LeadInvestigator user to true
+                sCase.Users.Single(cu => cu.User.EmailAddress == newLeadInvestigator.EmailAddress).IsLeadInvestigator = true;
             }
         }
 
         // Save changes to the database
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         // Create Meilisearch Client
         MeilisearchClient meiliClient =
-            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+            new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
         // Get the cases index
         Index index = meiliClient.Index("cases");
 
         // Update Meilisearch document
-        await index.UpdateDocumentsAsync(new[]
-        {
-            new Search.Case()
+        await index.UpdateDocumentsAsync([
+            new Search.Case
             {
                 Id = sCase.Id,
-                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
+                EmailAddresses = sCase.Users.Select(u => u.User.EmailAddress).ToList(),
                 DisplayId = sCase.DisplayId,
                 DisplayName = sCase.DisplayName,
                 Name = sCase.Name,
-                SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
-                SIOGivenName = sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
-                SIOLastName = sCase.Users.Single(cu => cu.IsSIO).User.LastName
+                LeadInvestigatorDisplayName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.DisplayName,
+                LeadInvestigatorGivenName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.GivenName,
+                LeadInvestigatorLastName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.LastName
             }
-        });
+        ]);
 
         // Return no content
         return NoContent();
@@ -553,59 +498,40 @@ public class CaseController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "sio,organization-administrator")]
+    [Authorize]
     public async Task<ActionResult<API.Case>> CreateCase(API.AddCase caseAddObject)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
+        // If no lead investigator is provided then the user making the request is the lead investigator
+        string leadInvestigatorEmailAddress = caseAddObject.LeadInvestigatorEmailAddress ?? emailAddress;
 
-        long rawSIOUserId;
-        // If no SIO is provided then the user making the request is the SIO
-        if (caseAddObject.SIOUserId == null)
-        {
-            rawSIOUserId = userId;
-        }
-        else
-        {
-            // Get SIO user ID from squid
-            rawSIOUserId = _sqids.Decode(caseAddObject.SIOUserId)[0];
+        // Get LeadInvestigator user from the database
+        Database.User? LeadInvestigatorUser = await dbContext.User
+            .FirstOrDefaultAsync(u => u.EmailAddress == leadInvestigatorEmailAddress);
 
-            // If the user is an SIO and is trying to create an case for another user return a HTTP 401 error
-            if (!User.IsInRole("organization-administrator") && rawSIOUserId != userId)
-                return Unauthorized("As you hold an SIO role you can only create cases where you are the SIO!");
-        }
-
-        // Get SIO user from the database
-        Database.User? SIOUser = await _dbContext.User
-            .Include(u => u.Roles)
-            .Include(u => u.Organization)
-            .FirstOrDefaultAsync(u => u.Id == rawSIOUserId && u.Organization.Id == organizationId);
-
-        if (SIOUser == null)
+        if (LeadInvestigatorUser == null)
             return Unauthorized(
-                $"A user with the ID `{caseAddObject.SIOUserId}` was not found in the organization with the ID `{organizationId}`!");
+                $"A user with the ID `{caseAddObject.LeadInvestigatorEmailAddress}` was not found!");
 
         // Create the case
         Database.Case sCase = new()
@@ -617,12 +543,8 @@ public class CaseController : ControllerBase
             Accessed = DateTime.MinValue
         };
 
-        // Give the SIO user access to the case and make them SIO
-        sCase.Users.Add(new Database.CaseUser
-        {
-            User = SIOUser,
-            IsSIO = true
-        });
+        // Give the LeadInvestigator user access to the case and make them LeadInvestigator
+        sCase.Users.Add(new Database.CaseUser { User = LeadInvestigatorUser, IsLeadInvestigator = true });
 
         // Log creation of case
         await _auditContext.LogAsync("Lighthouse Notes",
@@ -630,37 +552,30 @@ public class CaseController : ControllerBase
             {
                 Action =
                     $"The case `{sCase.DisplayName}` was created by `{userNameJob}`.",
-                UserID = userId, OrganizationID = organizationId
+                EmailAddress = emailAddress
             });
 
         // Add the case to the database
-        _dbContext.Case.Add(sCase);
+        dbContext.Case.Add(sCase);
 
         // Add users to case
-        if (caseAddObject.UserIds != null)
-            foreach (string userToAddId in caseAddObject.UserIds)
+        if (caseAddObject.EmailAddresses != null)
+            foreach (string userToAddEmailAddress in caseAddObject.EmailAddresses)
             {
-                // Get user ID from squid 
-                long rawUserId = _sqids.Decode(userToAddId)[0];
-
-                // If the user is trying to add the SIO user to the case - skip as the SIO user has already been added
-                if (rawUserId == SIOUser.Id) continue;
+                // If the user is trying to add the LeadInvestigator user to the case - skip as the LeadInvestigator user has already been added
+                if (userToAddEmailAddress == LeadInvestigatorUser.EmailAddress) continue;
 
                 // Fetch user to add from the database
-                Database.User? userToAdd = await _dbContext.User
-                    .FirstOrDefaultAsync(u => u.Id == rawUserId && u.Organization.Id == organizationId);
+                Database.User? userToAdd = await dbContext.User
+                    .FirstOrDefaultAsync(u => u.EmailAddress == userToAddEmailAddress);
 
-                // If user can not be found then return a HTTP 404
+                // If user can not be found then return an HTTP 404
                 if (userToAdd == null)
                     return
-                        NotFound(
-                            $"A user with the ID `{userToAddId}` was not found in the organization with the ID `{organizationId}`!");
+                        NotFound($"A user with the ID `{userToAddEmailAddress}` was not found!");
 
                 // Add user to case
-                sCase.Users.Add(new Database.CaseUser
-                {
-                    User = userToAdd
-                });
+                sCase.Users.Add(new Database.CaseUser { User = userToAdd });
 
                 // Log addition of user
                 await _auditContext.LogAsync("Lighthouse Notes",
@@ -668,7 +583,7 @@ public class CaseController : ControllerBase
                     {
                         Action =
                             $"`{userToAdd.DisplayName} ({userToAdd.JobTitle})` was added to the case `{sCase.DisplayName}` by `{userNameJob}`.",
-                        UserID = userId, OrganizationID = organizationId
+                        EmailAddress = emailAddress
                     });
             }
 
@@ -676,11 +591,11 @@ public class CaseController : ControllerBase
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
         // Save changes to the database
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         // Create Meilisearch Client
         MeilisearchClient meiliClient =
-            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+            new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
         // Try getting the contemporaneous-notes index
         try
@@ -694,111 +609,84 @@ public class CaseController : ControllerBase
             if (e.Code == "index_not_found")
             {
                 await meiliClient.CreateIndexAsync("cases", "id");
-                await meiliClient.Index("cases").UpdateFilterableAttributesAsync(new[] { "userIds" });
+                await meiliClient.Index("cases").UpdateFilterableAttributesAsync(["emailAddresses"]);
             }
         }
 
         // Get the cases index
         Index index = meiliClient.Index("cases");
 
-        await index.AddDocumentsAsync(new[]
-        {
-            new Search.Case()
+        await index.AddDocumentsAsync([
+            new Search.Case
             {
                 Id = sCase.Id,
-                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
+                EmailAddresses = sCase.Users.Select(u => u.User.EmailAddress).ToList(),
                 DisplayId = sCase.DisplayId,
                 DisplayName = sCase.DisplayName,
                 Name = sCase.Name,
-                SIODisplayName = SIOUser.DisplayName,
-                SIOGivenName = SIOUser.GivenName,
-                SIOLastName = SIOUser.LastName
+                LeadInvestigatorDisplayName = LeadInvestigatorUser.DisplayName,
+                LeadInvestigatorGivenName = LeadInvestigatorUser.GivenName,
+                LeadInvestigatorLastName = LeadInvestigatorUser.LastName
             }
-        });
-
-        // Explicitly load roles for each user
-        foreach (Database.CaseUser caseUser in sCase.Users)
-            await _dbContext.Entry(caseUser.User)
-                .Collection(u => u.Roles)
-                .LoadAsync();
+        ]);
 
         // Return the created case
         return new API.Case
         {
-            Id = _sqids.Encode(sCase.Id),
+            Id = sqids.Encode(sCase.Id),
             DisplayId = sCase.DisplayId,
             Name = sCase.Name,
             DisplayName = sCase.DisplayName,
-            SIO = new API.User
-            {
-                Id = _sqids.Encode(SIOUser.Id), Auth0Id = SIOUser.Auth0Id,
-                JobTitle = SIOUser.JobTitle, DisplayName = SIOUser.DisplayName,
-                GivenName = SIOUser.GivenName,
-                LastName = SIOUser.LastName, EmailAddress = SIOUser.EmailAddress,
-                ProfilePicture = SIOUser.ProfilePicture,
-                Organization = new API.Organization
-                    { Name = SIOUser.Organization.DisplayName, DisplayName = SIOUser.Organization.DisplayName },
-                Roles = SIOUser.Roles.Select(r => r.Name).ToList()
-            },
+            LeadInvestigator =
+                new API.User
+                {
+                    EmailAddress = LeadInvestigatorUser.EmailAddress,
+                    JobTitle = LeadInvestigatorUser.JobTitle,
+                    DisplayName = LeadInvestigatorUser.DisplayName,
+                    GivenName = LeadInvestigatorUser.GivenName,
+                    LastName = LeadInvestigatorUser.LastName
+                },
             Modified = TimeZoneInfo.ConvertTimeFromUtc(sCase.Modified, timeZone),
             Accessed = TimeZoneInfo.ConvertTimeFromUtc(sCase.Accessed, timeZone),
             Created = TimeZoneInfo.ConvertTimeFromUtc(sCase.Created, timeZone),
             Status = sCase.Status,
             Users = sCase.Users.Select(cu => new API.User
             {
-                Id = _sqids.Encode(cu.User.Id), Auth0Id = cu.User.Auth0Id,
-                JobTitle = cu.User.JobTitle, DisplayName = cu.User.DisplayName,
-                GivenName = cu.User.GivenName, LastName = cu.User.LastName, EmailAddress = cu.User.EmailAddress,
-                ProfilePicture = cu.User.ProfilePicture,
-                Organization = new API.Organization
-                    { Name = cu.User.Organization.DisplayName, DisplayName = cu.User.Organization.DisplayName },
-                Roles = cu.User.Roles.Select(r => r.Name).ToList()
+                EmailAddress = LeadInvestigatorUser.EmailAddress,
+                JobTitle = cu.User.JobTitle,
+                DisplayName = cu.User.DisplayName,
+                GivenName = cu.User.GivenName,
+                LastName = cu.User.LastName
             }).ToList()
         };
     }
 
     private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user ID from claim
-        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user email from JWT claim
+        string? emailAddress = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
 
-        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
-        if (auth0UserId == null)
-            return new PreflightResponse
-                { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
+        // If user email is null then it does not exist in JWT so return an HTTP 400 error
+        if (string.IsNullOrEmpty(emailAddress))
+            return new PreflightResponse { Error = BadRequest("Email Address cannot be found in the JSON Web Token (JWT)!") };
 
-        // Get organization ID from claim
-        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-
-        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
-        if (organizationId == null)
-            return new PreflightResponse
-                { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
-
-        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
-        PreflightResponseDetails? userQueryResult = await _dbContext.User
-            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+        // Query user details including roles and application settings
+        PreflightResponseDetails? preflightData = await dbContext.User
+            .Where(u => u.EmailAddress == emailAddress)
+            .Include(u => u.Settings)
             .Select(u => new PreflightResponseDetails
             {
-                OrganizationId = u.Organization.Id,
-                OrganizationSettings = u.Organization.Settings,
-                UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
-                UserSettings = u.Settings
-            }).SingleOrDefaultAsync();
+                EmailAddress = u.EmailAddress, UserNameJob = $"{u.DisplayName} ({u.JobTitle})", UserSettings = u.Settings
+            })
+            .SingleOrDefaultAsync();
 
-        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
-        if (userQueryResult == null)
-            return new PreflightResponse
-            {
-                Error = NotFound(
-                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
-            };
+        // If query result is null then the user does not exist
+        if (preflightData == null)
+            return new PreflightResponse { Error = NotFound($"A user with the user email: `{emailAddress}` was not found!") }
+                ;
 
-        return new PreflightResponse
-        {
-            Details = userQueryResult
-        };
+        // Return preflight response
+        return new PreflightResponse { Details = preflightData };
     }
 
     private class PreflightResponse
@@ -809,9 +697,7 @@ public class CaseController : ControllerBase
 
     private class PreflightResponseDetails
     {
-        public required string OrganizationId { get; init; }
-        public required Database.OrganizationSettings OrganizationSettings { get; init; }
-        public long UserId { get; init; }
+        public required string EmailAddress { get; init; }
         public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }

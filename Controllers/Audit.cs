@@ -3,61 +3,51 @@
 [Route("/audit")]
 [ApiController]
 [AuditApi(EventTypeName = "HTTP")]
-public class AuditController : ControllerBase
+public class AuditController(DatabaseContext dbContext) : ControllerBase
 {
-    private readonly DatabaseContext _dbContext;
-
-    public AuditController(DatabaseContext dbContext)
-    {
-        _dbContext = dbContext;
-    }
-
     // GET: /audit/user
+    // Will return a paginated list of events with the type "Lighthouse Notes" ordered by date in descending order
     [HttpGet("user")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult<IEnumerable<API.UserAudit>>> SimpleAudit([FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10)
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<API.UserAudit>>> SimpleAudit([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
+        // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+            return Problem("Preflight checks failed with an unknown error!");
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
         // Set pagination headers
-        HttpContext.Response.Headers.Add("X-Page", page.ToString());
-        HttpContext.Response.Headers.Add("X-Per-Page", pageSize.ToString());
-        HttpContext.Response.Headers.Add("X-Total-Count",
-            _dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId)
+        HttpContext.Response.Headers.Append("X-Page", page.ToString());
+        HttpContext.Response.Headers.Append("X-Per-Page", pageSize.ToString());
+        HttpContext.Response.Headers.Append("X-Total-Count",
+            dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.EmailAddress == emailAddress)
                 .ToString());
-        HttpContext.Response.Headers.Add("X-Total-Pages",
-            ((_dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId) +
+        HttpContext.Response.Headers.Append("X-Total-Pages",
+            ((dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.EmailAddress == emailAddress) +
                 pageSize - 1) / pageSize).ToString());
 
-        // Return all events with the type "Lighthouse Notes" ordered by date in descending order 
-        return _dbContext.Event.Where(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.Id == userId)
+        // Return all events with the type "Lighthouse Notes" ordered by date in descending order
+        return dbContext.Event.Where(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.EmailAddress == emailAddress)
             .OrderByDescending(e => e.Created).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new API.UserAudit
             {
                 Action = x.Data.RootElement.GetProperty("Action").GetString()!,
@@ -68,44 +58,26 @@ public class AuditController : ControllerBase
 
     private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user ID from claim
-        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user email from JWT claim
+        string? emailAddress = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
 
-        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
-        if (auth0UserId == null)
-            return new PreflightResponse
-                { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
+        // If user email is null then it does not exist in JWT so return an HTTP 400 error
+        if (string.IsNullOrEmpty(emailAddress))
+            return new PreflightResponse { Error = BadRequest("Email address cannot be found in the JSON Web Token (JWT)!") };
 
-        // Get organization ID from claim
-        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
+        // Query user details including roles and application settings
+        PreflightResponseDetails? preflightData = await dbContext.User
+            .Where(u => u.EmailAddress == emailAddress)
+            .Include(u => u.Settings)
+            .Select(u => new PreflightResponseDetails { EmailAddress = u.EmailAddress, UserSettings = u.Settings })
+            .SingleOrDefaultAsync();
 
-        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
-        if (organizationId == null)
-            return new PreflightResponse
-                { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
+        // If query result is null then the user does not exist
+        if (preflightData == null)
+            return new PreflightResponse { Error = NotFound($"A user with the email address: `{emailAddress}` was not found!") };
 
-        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
-        PreflightResponseDetails? userQueryResult = await _dbContext.User
-            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails
-            {
-                OrganizationId = u.Organization.Id,
-                UserId = u.Id,
-                UserSettings = u.Settings
-            }).SingleOrDefaultAsync();
-
-        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
-        if (userQueryResult == null)
-            return new PreflightResponse
-            {
-                Error = NotFound(
-                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
-            };
-
-        return new PreflightResponse
-        {
-            Details = userQueryResult
-        };
+        // Return preflight response
+        return new PreflightResponse { Details = preflightData };
     }
 
     private class PreflightResponse
@@ -116,8 +88,7 @@ public class AuditController : ControllerBase
 
     private class PreflightResponseDetails
     {
-        public required string OrganizationId { get; init; }
-        public long UserId { get; init; }
+        public required string EmailAddress { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }
 }

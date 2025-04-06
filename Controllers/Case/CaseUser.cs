@@ -4,85 +4,65 @@ using Index = Meilisearch.Index;
 namespace Server.Controllers.Case;
 
 [ApiController]
-[Route("/case/{caseId}/user/{userId}")]
+[Route("/case/{caseId}/user/{emailAddress}")]
 [AuditApi(EventTypeName = "HTTP")]
-public class CaseUserController : ControllerBase
+public class CaseUserController(DatabaseContext dbContext, SqidsEncoder<long> sqids, IConfiguration configuration) : ControllerBase
 {
-    private readonly AuditScopeFactory _auditContext;
-    private readonly DatabaseContext _dbContext;
-    private readonly SqidsEncoder<long> _sqids;
-
-    public CaseUserController(DatabaseContext dbContext, SqidsEncoder<long> sqids)
-    {
-        _dbContext = dbContext;
-        _auditContext = new AuditScopeFactory();
-        _sqids = sqids;
-    }
+    private readonly AuditScopeFactory _auditContext = new();
 
     // POST: /case/?/user/?
     [HttpPut]
-    [Authorize(Roles = "sio, organization-administrator")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> PutCaseUser(string caseId, string userId)
+    public async Task<ActionResult> PutCaseUser(string caseId, string emailAddress)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long requestingUserId = preflightResponse.Details.UserId;
+        string requestingEmailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
-        long rawCaseId = _sqids.Decode(caseId)[0];
-        long rawUserId = _sqids.Decode(userId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", requestingUserId);
+        auditScope.SetCustomField("emailAddress", requestingEmailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == requestingUserId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId &&
+                        c.Users.Any(cu => cu.User.EmailAddress == requestingEmailAddress && cu.IsLeadInvestigator))
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        // If user is not in role and the user is not the SIO of the case then return HTTP 401 unauthorized
-        if (!User.IsInRole("organization-administrator") &&
-            sCase.Users.SingleOrDefault(cu => cu.IsSIO && cu.User.Id == requestingUserId) == null)
-            return Unauthorized("You do not have permission to edit this case as you did not create it!");
 
         // Get the user form the database
-        Database.User? user = _dbContext.User.FirstOrDefault(u =>
-            u.Id == rawUserId && u.Organization.Id == organizationId);
+        Database.User? user = dbContext.User.FirstOrDefault(u =>
+            u.EmailAddress == emailAddress);
 
-        // If user is null then return HTTP 404 not found 
-        if (user == null) return NotFound($"A user with the ID `{userId}` does not exist in your organization!");
+        // If user is null then return HTTP 404 not found
+        if (user == null) return NotFound($"A user with the ID `{emailAddress}` does not exist in your organization!");
 
         // Add user to the case
-        await _dbContext.CaseUser.AddAsync(new Database.CaseUser
-        {
-            Case = sCase,
-            User = user
-        });
+        await dbContext.CaseUser.AddAsync(new Database.CaseUser { Case = sCase, User = user });
 
         // Save changes to the database
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         // Log the addition of the user to the case
         await _auditContext.LogAsync("Lighthouse Notes",
@@ -90,96 +70,88 @@ public class CaseUserController : ControllerBase
             {
                 Action =
                     $"`{userNameJob}` added the user: `{user.DisplayName} {user.JobTitle}` to the case: `{sCase.DisplayName}`.",
-                UserID = requestingUserId, OrganizationID = organizationId
+                EmailAddress = requestingEmailAddress
             });
 
         // Create Meilisearch Client
         MeilisearchClient meiliClient =
-            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+            new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
         // Get the cases index
         Index index = meiliClient.Index("cases");
 
         // Update Meilisearch document
-        await index.UpdateDocumentsAsync(new[]
-        {
-            new Search.Case()
+        await index.UpdateDocumentsAsync([
+            new Search.Case
             {
                 Id = sCase.Id,
-                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
-                DisplayId = sCase.DisplayId,
+                EmailAddresses = sCase.Users.Select(u => u.User.EmailAddress).ToList(),
                 DisplayName = sCase.DisplayName,
                 Name = sCase.Name,
-                SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
-                SIOGivenName = sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
-                SIOLastName = sCase.Users.Single(cu => cu.IsSIO).User.LastName
+                LeadInvestigatorDisplayName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.DisplayName,
+                LeadInvestigatorGivenName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.GivenName,
+                LeadInvestigatorLastName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.LastName
             }
-        });
+        ]);
 
-        // Return HTTP 204 No Content 
+        // Return HTTP 204 No Content
         return NoContent();
     }
 
     // DELETE: /case/?/user/?
     [HttpDelete]
-    [Authorize(Roles = "sio, organization-administrator")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult> DeleteCaseUser(string caseId, string userId)
+    public async Task<ActionResult> DeleteCaseUser(string caseId, string emailAddress)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long requestingUserId = preflightResponse.Details.UserId;
+        string requestingEmailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
-        long rawCaseId = _sqids.Decode(caseId)[0];
-        long rawUserId = _sqids.Decode(userId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email adress
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", requestingUserId);
+        auditScope.SetCustomField("emailAddress", requestingEmailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == requestingUserId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId &&
+                        c.Users.Any(cu => cu.User.EmailAddress == requestingEmailAddress && cu.IsLeadInvestigator))
             .Include(c => c.Users)
             .ThenInclude(cu => cu.User)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
-        if (!User.IsInRole("organization-administrator") &&
-            sCase.Users.SingleOrDefault(cu => cu.IsSIO && cu.User.Id == requestingUserId) == null)
-            return Unauthorized("You do not have permission to edit this case as you did not create it!");
 
-        Database.CaseUser? caseUser = sCase.Users.FirstOrDefault(cu => cu.User.Id == rawUserId);
+        Database.CaseUser? caseUser = sCase.Users.FirstOrDefault(cu => cu.User.EmailAddress == emailAddress);
 
         if (caseUser == null)
             return NotFound(
-                $"The user `{userId}` does not have access to the case `{caseId}` therefore can not be removed from said case.");
+                $"The user `{emailAddress}` does not have access to the case `{caseId}` therefore can not be removed from said case.");
 
-        if (caseUser.IsSIO) return UnprocessableEntity("You can not delete the SIO from the case!");
+        if (caseUser.IsLeadInvestigator) return UnprocessableEntity("You can not delete the LeadInvestigator from the case!");
 
-        _dbContext.CaseUser.Remove(caseUser);
+        dbContext.CaseUser.Remove(caseUser);
 
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         // Log the removal of the user from the case
         await _auditContext.LogAsync("Lighthouse Notes",
@@ -187,76 +159,56 @@ public class CaseUserController : ControllerBase
             {
                 Action =
                     $"`{userNameJob}` removed the user: `{caseUser.User.DisplayName} {caseUser.User.JobTitle}` from the case: `{sCase.DisplayName}`.",
-                UserID = requestingUserId, OrganizationID = organizationId
+                EmailAddress = requestingEmailAddress
             });
 
 
         // Create Meilisearch Client
         MeilisearchClient meiliClient =
-            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+            new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
         // Get the cases index
         Index index = meiliClient.Index("cases");
 
         // Update Meilisearch document
-        await index.UpdateDocumentsAsync(new[]
-        {
-            new Search.Case()
+        await index.UpdateDocumentsAsync([
+            new Search.Case
             {
                 Id = sCase.Id,
-                UserIds = sCase.Users.Select(u => u.User.Id).ToList(),
+                EmailAddresses = sCase.Users.Select(u => u.User.EmailAddress).ToList(),
                 DisplayId = sCase.DisplayId,
                 DisplayName = sCase.DisplayName,
                 Name = sCase.Name,
-                SIODisplayName = sCase.Users.Single(cu => cu.IsSIO).User.DisplayName,
-                SIOGivenName = sCase.Users.Single(cu => cu.IsSIO).User.GivenName,
-                SIOLastName = sCase.Users.Single(cu => cu.IsSIO).User.LastName
+                LeadInvestigatorDisplayName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.DisplayName,
+                LeadInvestigatorGivenName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.GivenName,
+                LeadInvestigatorLastName = sCase.Users.Single(cu => cu.IsLeadInvestigator).User.LastName
             }
-        });
+        ]);
         return Ok();
     }
 
     private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user ID from claim
-        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user email from JWT claim
+        string? emailAddress = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
 
-        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
-        if (auth0UserId == null)
-            return new PreflightResponse
-                { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
+        // If user email is null then it does not exist in JWT so return an HTTP 400 error
+        if (string.IsNullOrEmpty(emailAddress))
+            return new PreflightResponse { Error = BadRequest("Email Address cannot be found in the JSON Web Token (JWT)!") };
 
-        // Get organization ID from claim
-        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
+        // Query user details including roles and application settings
+        PreflightResponseDetails? preflightData = await dbContext.User
+            .Where(u => u.EmailAddress == emailAddress)
+            .Select(u => new PreflightResponseDetails { EmailAddress = u.EmailAddress, UserNameJob = $"{u.DisplayName} ({u.JobTitle})" })
+            .SingleOrDefaultAsync();
 
-        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
-        if (organizationId == null)
-            return new PreflightResponse
-                { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
+        // If query result is null then the user does not exist
+        if (preflightData == null)
+            return new PreflightResponse { Error = NotFound($"A user with the user email: `{emailAddress}` was not found!") }
+                ;
 
-        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
-        PreflightResponseDetails? userQueryResult = await _dbContext.User
-            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
-            .Select(u => new PreflightResponseDetails
-            {
-                OrganizationId = u.Organization.Id,
-                OrganizationSettings = u.Organization.Settings,
-                UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} ({u.JobTitle})"
-            }).SingleOrDefaultAsync();
-
-        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
-        if (userQueryResult == null)
-            return new PreflightResponse
-            {
-                Error = NotFound(
-                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
-            };
-
-        return new PreflightResponse
-        {
-            Details = userQueryResult
-        };
+        // Return preflight response
+        return new PreflightResponse { Details = preflightData };
     }
 
     private class PreflightResponse
@@ -267,9 +219,7 @@ public class CaseUserController : ControllerBase
 
     private class PreflightResponseDetails
     {
-        public required string OrganizationId { get; init; }
-        public required Database.OrganizationSettings OrganizationSettings { get; init; }
-        public long UserId { get; init; }
+        public required string EmailAddress { get; init; }
         public required string UserNameJob { get; init; }
     }
 }

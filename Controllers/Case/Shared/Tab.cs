@@ -9,18 +9,9 @@ namespace Server.Controllers.Case.Shared;
 [ApiController]
 [Route("/case/{caseId}/shared")]
 [AuditApi(EventTypeName = "HTTP")]
-public class SharedTabsController : ControllerBase
+public class SharedTabsController(DatabaseContext dbContext, SqidsEncoder<long> sqids, IConfiguration configuration) : ControllerBase
 {
-    private readonly AuditScopeFactory _auditContext;
-    private readonly DatabaseContext _dbContext;
-    private readonly SqidsEncoder<long> _sqids;
-
-    public SharedTabsController(DatabaseContext dbContext, SqidsEncoder<long> sqids)
-    {
-        _dbContext = dbContext;
-        _auditContext = new AuditScopeFactory();
-        _sqids = sqids;
-    }
+    private readonly AuditScopeFactory _auditContext = new();
 
     // GET: /case/?/shared/tabs
     [HttpGet("tabs")]
@@ -29,44 +20,38 @@ public class SharedTabsController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<IEnumerable<API.SharedTab>>> GetTabs(string caseId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
-            return Problem(
-                "Preflight checks failed with an unknown error!"
-            );
+            return Problem("Preflight checks failed with an unknown error!");
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedTabs)
             .ThenInclude(st => st.Creator)
-            .ThenInclude(u => u.Roles)
             .Include(c => c.SharedTabs)
             .ThenInclude(st => st.Creator)
-            .ThenInclude(u => u.Organization)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
@@ -76,25 +61,16 @@ public class SharedTabsController : ControllerBase
         // Return a list of the user's tabs
         return sCase.SharedTabs.Select(t => new API.SharedTab
         {
-            Id = _sqids.Encode(t.Id),
+            Id = sqids.Encode(t.Id),
             Name = t.Name,
             Created = TimeZoneInfo.ConvertTimeFromUtc(t.Created, timeZone),
             Creator = new API.User
             {
-                Id = _sqids.Encode(t.Creator.Id),
-                Auth0Id = t.Creator.Auth0Id,
-                DisplayName = t.Creator.DisplayName,
                 EmailAddress = t.Creator.EmailAddress,
+                DisplayName = t.Creator.DisplayName,
                 GivenName = t.Creator.GivenName,
                 LastName = t.Creator.LastName,
-                JobTitle = t.Creator.JobTitle,
-                ProfilePicture = t.Creator.ProfilePicture,
-                Roles = t.Creator.Roles.Select(r => r.Name).ToList(),
-                Organization = new API.Organization
-                {
-                    DisplayName = t.Creator.Organization.DisplayName,
-                    Name = t.Creator.Organization.Name
-                }
+                JobTitle = t.Creator.JobTitle
             }
         }).ToList();
     }
@@ -106,52 +82,48 @@ public class SharedTabsController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<API.SharedTab>> GetTab(string caseId, string tabId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
-        long rawCaseId = _sqids.Decode(caseId)[0];
-        long rawTabId = _sqids.Decode(tabId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
+        long rawTabId = sqids.Decode(tabId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
         // Fetch tab from the database
-        Database.SharedTab? tab = await _dbContext.SharedTab
+        Database.SharedTab? tab = await dbContext.SharedTab
             .Where(st => st.Id == rawTabId && st.Case == sCase)
             .Include(st => st.Creator)
-            .ThenInclude(u => u.Organization)
             .Include(st => st.Creator)
-            .ThenInclude(u => u.Roles)
             .SingleOrDefaultAsync();
 
-        // If tab is null then return a HTTP 404 error as it does not exist
+        // If tab is null then return an HTTP 404 error as it does not exist
         if (tab == null)
             return NotFound($"The shared tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
 
@@ -161,25 +133,16 @@ public class SharedTabsController : ControllerBase
         // Return tab details
         return new API.SharedTab
         {
-            Id = _sqids.Encode(tab.Id),
+            Id = sqids.Encode(tab.Id),
             Name = tab.Name,
             Created = TimeZoneInfo.ConvertTimeFromUtc(tab.Created, timeZone),
             Creator = new API.User
             {
-                Id = _sqids.Encode(tab.Creator.Id),
-                Auth0Id = tab.Creator.Auth0Id,
-                DisplayName = tab.Creator.DisplayName,
                 EmailAddress = tab.Creator.EmailAddress,
+                DisplayName = tab.Creator.DisplayName,
                 GivenName = tab.Creator.GivenName,
                 LastName = tab.Creator.LastName,
-                JobTitle = tab.Creator.JobTitle,
-                ProfilePicture = tab.Creator.ProfilePicture,
-                Roles = tab.Creator.Roles.Select(r => r.Name).ToList(),
-                Organization = new API.Organization
-                {
-                    DisplayName = tab.Creator.Organization.DisplayName,
-                    Name = tab.Creator.Organization.Name
-                }
+                JobTitle = tab.Creator.JobTitle
             }
         };
     }
@@ -191,61 +154,53 @@ public class SharedTabsController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<API.SharedTab>> CreateTab(string caseId, API.AddTab tabAddObject)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedTabs)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
-        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
+        // If case does not exist then return an HTTP 404 error
         // The case might not exist or the user does not have access to the case
+        if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
 
-        // Fetch the creator user from the database 
-        Database.User user = await _dbContext.User
-            .Include(user => user.Roles)
-            .Include(user => user.Organization)
-            .SingleAsync(u => u.Id == userId);
+        // Fetch the creator user from the database
+        Database.User user = await dbContext.User
+            .SingleAsync(u => u.EmailAddress == emailAddress);
 
         // Create tab model
-        Database.SharedTab tabModel = new()
-        {
-            Name = tabAddObject.Name,
-            Creator = user
-        };
+        Database.SharedTab tabModel = new() { Name = tabAddObject.Name, Creator = user };
 
         // Add tab to database
         sCase.SharedTabs.Add(tabModel);
 
         // Save changes to the database
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         // Log creation of the tab
         await _auditContext.LogAsync("Lighthouse Notes",
@@ -253,36 +208,28 @@ public class SharedTabsController : ControllerBase
             {
                 Action =
                     $"`{userNameJob}` created the shared tab `{tabModel.Name}` for `{sCase.DisplayName}`.",
-                UserID = userId, OrganizationID = organizationId
+                EmailAddress = emailAddress
             });
 
         // Get the user's time zone
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
 
         // Return the newly created tab details
-        return CreatedAtAction(nameof(GetTabs), new { caseId }, new API.SharedTab
-        {
-            Id = _sqids.Encode(tabModel.Id),
-            Name = tabModel.Name,
-            Created = TimeZoneInfo.ConvertTimeFromUtc(tabModel.Created, timeZone),
-            Creator = new API.User
+        return CreatedAtAction(nameof(GetTabs), new { caseId },
+            new API.SharedTab
             {
-                Id = _sqids.Encode(tabModel.Creator.Id),
-                Auth0Id = tabModel.Creator.Auth0Id,
-                DisplayName = tabModel.Creator.DisplayName,
-                EmailAddress = tabModel.Creator.EmailAddress,
-                GivenName = tabModel.Creator.GivenName,
-                LastName = tabModel.Creator.LastName,
-                JobTitle = tabModel.Creator.JobTitle,
-                ProfilePicture = tabModel.Creator.ProfilePicture,
-                Roles = tabModel.Creator.Roles.Select(r => r.Name).ToList(),
-                Organization = new API.Organization
+                Id = sqids.Encode(tabModel.Id),
+                Name = tabModel.Name,
+                Created = TimeZoneInfo.ConvertTimeFromUtc(tabModel.Created, timeZone),
+                Creator = new API.User
                 {
-                    DisplayName = tabModel.Creator.Organization.DisplayName,
-                    Name = tabModel.Creator.Organization.Name
+                    EmailAddress = tabModel.Creator.EmailAddress,
+                    DisplayName = tabModel.Creator.DisplayName,
+                    GivenName = tabModel.Creator.GivenName,
+                    LastName = tabModel.Creator.LastName,
+                    JobTitle = tabModel.Creator.JobTitle
                 }
-            }
-        });
+            });
     }
 
     // GET: /case/?/shared/tab/?/content
@@ -292,41 +239,38 @@ public class SharedTabsController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult> GetTabContent(string caseId, string tabId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
-        long rawCaseId = _sqids.Decode(caseId)[0];
-        long rawTabId = _sqids.Decode(tabId)[0];
+        string emailAddress = preflightResponse.Details.EmailAddress;
+        long rawCaseId = sqids.Decode(caseId)[0];
+        long rawTabId = sqids.Decode(tabId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedTabs)
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
@@ -339,22 +283,21 @@ public class SharedTabsController : ControllerBase
 
         // Create minio client
         IMinioClient minio = new MinioClient()
-            .WithEndpoint(organizationSettings.S3Endpoint)
-            .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
-            .WithSSL(organizationSettings.S3NetworkEncryption)
+            .WithEndpoint(configuration.GetValue<string>("Minio:Endpoint"))
+            .WithCredentials(configuration.GetValue<string>("Minio:AccessKey"), configuration.GetValue<string>("Minio:SecretKey"))
+            .WithSSL(configuration.GetValue<bool>("Minio:NetworkEncryption"))
             .Build();
-
-        // Create a variable for object path with auth0| removed 
+        // Create a variable for object path
         string objectPath = $"cases/{caseId}/shared/tabs/{tabId}/content.txt";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organizationSettings.S3BucketName)
+            .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return a HTTP 500 error
+        // If bucket does not exist return an HTTP 500 error
         if (!bucketExists)
-            return Problem($"An S3 Bucket with the name `{organizationSettings.S3BucketName}` does not exist!");
+            return Problem($"An S3 Bucket with the name `{configuration.GetValue<string>("Minio:BucketName")}` does not exist!");
 
         // Create variable to store object metadata
         ObjectStat objectMetadata;
@@ -363,7 +306,7 @@ public class SharedTabsController : ControllerBase
         try
         {
             objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
             );
         }
@@ -379,7 +322,7 @@ public class SharedTabsController : ControllerBase
         Database.SharedHash? objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
             h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
 
-        // If object hash is null then a hash does not exist so return a HTTP 500 error
+        // If object hash is null then a hash does not exist so return an HTTP 500 error
         if (objectHashes == null)
             return Problem($"Unable to find hash values for the shared tab with the ID `{tabId}`!",
                 title: "Unable to find hash values for the shared tab!");
@@ -389,7 +332,7 @@ public class SharedTabsController : ControllerBase
 
         // Get object and copy file contents to stream
         await minio.GetObjectAsync(new GetObjectArgs()
-            .WithBucket(organizationSettings.S3BucketName)
+            .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
             .WithObject(objectPath)
             .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
         );
@@ -428,76 +371,75 @@ public class SharedTabsController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult> PostTabContent(string caseId, string tabId, [FromForm] IFormFile file)
+    [Authorize]
+    public async Task<ActionResult> PostTabContent(string caseId, string tabId, IFormFile file)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
-        long rawCaseId = _sqids.Decode(caseId)[0];
-        long rawTabId = _sqids.Decode(tabId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
+        long rawTabId = sqids.Decode(tabId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        auditScope.SetCustomField("emailAddress", emailAddress);
+
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedTabs)
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
         // Fetch tab from the database
         Database.SharedTab? tab = sCase.SharedTabs.SingleOrDefault(t => t.Id == rawTabId);
 
-        // If tab is null then return a HTTP 404 error
+        // If tab is null then return an HTTP 404 error
         if (tab == null)
             return NotFound($"The shared tab with the ID `{tabId}` was not found in the case with the ID`{caseId}`!");
 
         // Create minio client
         IMinioClient minio = new MinioClient()
-            .WithEndpoint(organizationSettings.S3Endpoint)
-            .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
-            .WithSSL(organizationSettings.S3NetworkEncryption)
+            .WithEndpoint(configuration.GetValue<string>("Minio:Endpoint"))
+            .WithCredentials(configuration.GetValue<string>("Minio:AccessKey"), configuration.GetValue<string>("Minio:SecretKey"))
+            .WithSSL(configuration.GetValue<bool>("Minio:NetworkEncryption"))
             .Build();
 
-        // Create a variable for filepath with auth0| removed
+
+        // Create a variable for object path
         string objectPath = $"cases/{caseId}/shared/tabs/{tabId}/content.txt";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organizationSettings.S3BucketName)
+            .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return a HTTP 500 error
+        // If bucket does not exist return an HTTP 500 error
         if (!bucketExists)
-            return Problem($"An S3 Bucket with the name `{organizationSettings.S3BucketName}` does not exist!");
+            return Problem($"An S3 Bucket with the name `{configuration.GetValue<string>("Minio:BucketName")}` does not exist!");
 
         // Check if object exists
         try
         {
             await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
             );
 
@@ -512,7 +454,7 @@ public class SharedTabsController : ControllerBase
 
             // Save the updated file to the s3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
                 .WithStreamData(memoryStream)
                 .WithObjectSize(memoryStream.Length)
@@ -524,7 +466,7 @@ public class SharedTabsController : ControllerBase
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
             );
 
@@ -546,7 +488,7 @@ public class SharedTabsController : ControllerBase
             });
 
             // Save changes to the database
-            await _dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             // Log the addition of content
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -554,7 +496,7 @@ public class SharedTabsController : ControllerBase
                 {
                     Action =
                         $"`{userNameJob}` changed the content in the shared tab `{tab.Name}` for `{sCase.DisplayName}`.",
-                    UserID = userId, OrganizationID = organizationId
+                    EmailAddress = emailAddress
                 });
 
             // Return Ok
@@ -574,7 +516,7 @@ public class SharedTabsController : ControllerBase
 
             // Save file to S3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
                 .WithStreamData(memoryStream)
                 .WithObjectSize(memoryStream.Length)
@@ -586,7 +528,7 @@ public class SharedTabsController : ControllerBase
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
             );
 
@@ -608,7 +550,7 @@ public class SharedTabsController : ControllerBase
             });
 
             // Save changes to the database
-            await _dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             // Log the creation
             await _auditContext.LogAsync("Lighthouse Notes",
@@ -616,7 +558,7 @@ public class SharedTabsController : ControllerBase
                 {
                     Action =
                         $"`{userNameJob}` created content in the shared tab `{tab.Name}` for `{sCase.DisplayName}`.",
-                    UserID = userId, OrganizationID = organizationId
+                    EmailAddress = emailAddress
                 });
 
             // Return Ok
@@ -631,46 +573,29 @@ public class SharedTabsController : ControllerBase
 
     private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user ID from claim
-        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user email from JWT claim
+        string? emailAddress = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
 
-        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
-        if (auth0UserId == null)
-            return new PreflightResponse
-                { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
+        // If user email is null then it does not exist in JWT so return an HTTP 400 error
+        if (string.IsNullOrEmpty(emailAddress))
+            return new PreflightResponse { Error = BadRequest("Email Address cannot be found in the JSON Web Token (JWT)!") };
 
-        // Get organization ID from claim
-        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-
-        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
-        if (organizationId == null)
-            return new PreflightResponse
-                { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
-
-        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
-        PreflightResponseDetails? userQueryResult = await _dbContext.User
-            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+        // Query user details including roles and application settings
+        PreflightResponseDetails? preflightData = await dbContext.User
+            .Where(u => u.EmailAddress == emailAddress)
+            .Include(u => u.Settings)
             .Select(u => new PreflightResponseDetails
             {
-                OrganizationId = u.Organization.Id,
-                OrganizationSettings = u.Organization.Settings,
-                UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
-                UserSettings = u.Settings
-            }).SingleOrDefaultAsync();
+                EmailAddress = u.EmailAddress, UserNameJob = $"{u.DisplayName} ({u.JobTitle})", UserSettings = u.Settings
+            })
+            .SingleOrDefaultAsync();
 
-        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
-        if (userQueryResult == null)
-            return new PreflightResponse
-            {
-                Error = NotFound(
-                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
-            };
+        // If query result is null then the user does not exist
+        if (preflightData == null)
+            return new PreflightResponse { Error = NotFound($"A user with the user email: `{emailAddress}` was not found!") };
 
-        return new PreflightResponse
-        {
-            Details = userQueryResult
-        };
+        // Return preflight response
+        return new PreflightResponse { Details = preflightData };
     }
 
     private class PreflightResponse
@@ -681,9 +606,7 @@ public class SharedTabsController : ControllerBase
 
     private class PreflightResponseDetails
     {
-        public required string OrganizationId { get; init; }
-        public required Database.OrganizationSettings OrganizationSettings { get; init; }
-        public long UserId { get; init; }
+        public required string EmailAddress { get; init; }
         public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }

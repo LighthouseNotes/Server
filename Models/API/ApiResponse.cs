@@ -2,12 +2,7 @@
 
 namespace Server.Models.API;
 
-public class ApiResponse
+public class ApiResponse(string message)
 {
-    public ApiResponse(string message)
-    {
-        Message = message;
-    }
-
-    public string Message { get; set; }
+    public string Message { get; set; } = message;
 }

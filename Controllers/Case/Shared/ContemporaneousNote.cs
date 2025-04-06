@@ -13,18 +13,10 @@ namespace Server.Controllers.Case.Shared;
 [ApiController]
 [Route("/case/{caseId}/shared")]
 [AuditApi(EventTypeName = "HTTP")]
-public class SharedContemporaneousNotesController : ControllerBase
+public class SharedContemporaneousNotesController(DatabaseContext dbContext, SqidsEncoder<long> sqids, IConfiguration configuration)
+    : ControllerBase
 {
-    private readonly AuditScopeFactory _auditContext;
-    private readonly DatabaseContext _dbContext;
-    private readonly SqidsEncoder<long> _sqids;
-
-    public SharedContemporaneousNotesController(DatabaseContext dbContext, SqidsEncoder<long> sqids)
-    {
-        _dbContext = dbContext;
-        _auditContext = new AuditScopeFactory();
-        _sqids = sqids;
-    }
+    private readonly AuditScopeFactory _auditContext = new();
 
     // GET:  /case/?/shared/contemporaneous-notes
     [HttpGet("contemporaneous-notes")]
@@ -33,44 +25,40 @@ public class SharedContemporaneousNotesController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<List<API.SharedContemporaneousNotes>>> GetContemporaneousNotes(string caseId)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedContemporaneousNotes)
             .ThenInclude(scn => scn.Creator)
-            .ThenInclude(u => u.Roles)
             .Include(c => c.SharedContemporaneousNotes)
             .ThenInclude(scn => scn.Creator)
-            .ThenInclude(u => u.Organization)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
@@ -80,101 +68,89 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Return a list of the contemporaneous notes
         return sCase.SharedContemporaneousNotes.Select(cn => new API.SharedContemporaneousNotes
         {
-            Id = _sqids.Encode(cn.Id),
+            Id = sqids.Encode(cn.Id),
             Created = TimeZoneInfo.ConvertTimeFromUtc(cn.Created, timeZone),
             Creator = new API.User
             {
-                Id = _sqids.Encode(cn.Creator.Id),
-                Auth0Id = cn.Creator.Auth0Id,
-                DisplayName = cn.Creator.DisplayName,
                 EmailAddress = cn.Creator.EmailAddress,
+                DisplayName = cn.Creator.DisplayName,
                 GivenName = cn.Creator.GivenName,
                 LastName = cn.Creator.LastName,
-                JobTitle = cn.Creator.JobTitle,
-                ProfilePicture = cn.Creator.ProfilePicture,
-                Roles = cn.Creator.Roles.Select(r => r.Name).ToList(),
-                Organization = new API.Organization
-                {
-                    DisplayName = cn.Creator.Organization.DisplayName,
-                    Name = cn.Creator.Organization.Name
-                }
+                JobTitle = cn.Creator.JobTitle
             }
         }).ToList();
     }
 
     // GET: /case/?/shared/contemporaneous-note/?
-    [HttpGet("contemporaneous-note/{noteId}")]
+    [HttpGet("contemporaneous-note/{noteEmailAddress}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult> GetContemporaneousNote(string caseId, string noteId)
+    [Authorize]
+    public async Task<ActionResult> GetContemporaneousNote(string caseId, string noteEmailAddress)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        string emailAddress = preflightResponse.Details.EmailAddress;
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedContemporaneousNotes)
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
         // Convert Note ID squid to ID
-        long rawNoteId = _sqids.Decode(noteId)[0];
+        long rawNoteId = sqids.Decode(noteEmailAddress)[0];
 
         // Fetch the contemporaneous note from the database
         Database.SharedContemporaneousNote? contemporaneousNote =
             sCase.SharedContemporaneousNotes.SingleOrDefault(cn => cn.Id == rawNoteId);
 
-        // If contemporaneous note is null then return a HTTP 404 error as it does not exist
-        if (contemporaneousNote == null) return NotFound($"Can not find the note with the ID `{noteId}`");
+        // If contemporaneous note is null then return an HTTP 404 error as it does not exist
+        if (contemporaneousNote == null) return NotFound($"Can not find the note with the ID `{noteEmailAddress}`");
 
         // Create minio client
         IMinioClient minio = new MinioClient()
-            .WithEndpoint(organizationSettings.S3Endpoint)
-            .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
-            .WithSSL(organizationSettings.S3NetworkEncryption)
+            .WithEndpoint(configuration.GetValue<string>("Minio:Endpoint"))
+            .WithCredentials(configuration.GetValue<string>("Minio:AccessKey"), configuration.GetValue<string>("Minio:SecretKey"))
+            .WithSSL(configuration.GetValue<bool>("Minio:NetworkEncryption"))
             .Build();
 
-        // Create a variable for object path with auth0| removed 
+        // Create a variable for object path
         string objectPath =
-            $"cases/{caseId}/shared/contemporaneous-notes/{noteId}/note.txt";
+            $"cases/{caseId}/shared/contemporaneous-notes/{noteEmailAddress}/note.txt";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organizationSettings.S3BucketName)
+            .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
         ).ConfigureAwait(false);
 
         // If bucket does not exist return HTTP a 500 error
         if (!bucketExists)
-            return Problem($"An S3 Bucket with the name `{organizationSettings.S3BucketName}` does not exist!");
+            return Problem($"An S3 Bucket with the name `{configuration.GetValue<string>("Minio:BucketName")}` does not exist!");
 
         // Create variable to store object metadata
         ObjectStat objectMetadata;
@@ -183,7 +159,7 @@ public class SharedContemporaneousNotesController : ControllerBase
         try
         {
             objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
             );
         }
@@ -191,18 +167,18 @@ public class SharedContemporaneousNotesController : ControllerBase
         catch (ObjectNotFoundException)
         {
             return Problem(
-                $"Can not find the S3 object for contemporaneous note: `{noteId}` at the following path: `{objectPath}`.");
+                $"Can not find the S3 object for contemporaneous note: `{noteEmailAddress}` at the following path: `{objectPath}`.");
         }
 
         // Fetch object hash from database
         Database.SharedHash? objectHashes = sCase.SharedHashes.SingleOrDefault(h =>
             h.ObjectName == objectMetadata.ObjectName && h.VersionId == objectMetadata.VersionId);
 
-        // If object hash is null then a hash does not exist so return a HTTP 500 error
+        // If object hash is null then a hash does not exist so return an HTTP 500 error
         if (objectHashes == null)
             if (objectHashes == null)
                 return Problem(
-                    $"Unable to find hash value for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                    $"Unable to find hash value for shared contemporaneous note with the ID `{sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
                     title: "Could not find hash value for shared contemporaneous note!");
 
         // Create memory stream to store file contents
@@ -210,7 +186,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
         // Get object and copy file contents to stream
         await minio.GetObjectAsync(new GetObjectArgs()
-            .WithBucket(organizationSettings.S3BucketName)
+            .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
             .WithObject(objectPath)
             .WithCallbackStream(stream => { stream.CopyTo(memoryStream); })
         );
@@ -229,13 +205,13 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Check generated MD5 hash matches the hash in the database
         if (BitConverter.ToString(md5Hash).Replace("-", "").ToLowerInvariant() != objectHashes.Md5Hash)
             return Problem(
-                $"MD5 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                $"MD5 hash verification failed for shared contemporaneous note with the ID `{sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
                 title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (BitConverter.ToString(sha256Hash).Replace("-", "").ToLowerInvariant() != objectHashes.ShaHash)
             return Problem(
-                $"SHA256 hash verification failed for shared contemporaneous note with the ID `{_sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
+                $"SHA256 hash verification failed for shared contemporaneous note with the ID `{sqids.Encode(contemporaneousNote.Id)}` at the path `{objectPath}`!",
                 title: "SHA256 hash verification failed!");
 
         // Return file
@@ -249,78 +225,72 @@ public class SharedContemporaneousNotesController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
-    public async Task<ActionResult> PostContemporaneousNote(string caseId, [FromForm] IFormFile file)
+    [Authorize]
+    public async Task<ActionResult> PostContemporaneousNote(string caseId, IFormFile file)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         string userNameJob = preflightResponse.Details.UserNameJob;
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email adress
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedContemporaneousNotes)
             .Include(c => c.SharedHashes)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
         // Create minio client
         IMinioClient minio = new MinioClient()
-            .WithEndpoint(organizationSettings.S3Endpoint)
-            .WithCredentials(organizationSettings.S3AccessKey, organizationSettings.S3SecretKey)
-            .WithSSL(organizationSettings.S3NetworkEncryption)
+            .WithEndpoint(configuration.GetValue<string>("Minio:Endpoint"))
+            .WithCredentials(configuration.GetValue<string>("Minio:AccessKey"), configuration.GetValue<string>("Minio:SecretKey"))
+            .WithSSL(configuration.GetValue<bool>("Minio:NetworkEncryption"))
             .Build();
 
-        // Fetch the creator user from the database 
-        Database.User user = await _dbContext.User.SingleAsync(u => u.Id == userId);
+        // Fetch the creator user from the database
+        Database.User user = await dbContext.User.SingleAsync(u => u.EmailAddress == emailAddress);
 
         // Create contemporaneous note record in the database
-        Database.SharedContemporaneousNote contemporaneousNote = new()
-        {
-            Creator = user
-        };
+        Database.SharedContemporaneousNote contemporaneousNote = new() { Creator = user };
 
         // Add the note to the collection
         sCase.SharedContemporaneousNotes.Add(contemporaneousNote);
 
         // Save changes to the database so a GUID is generated
-        await _dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
-        // Create a variable for object path with auth0| removed 
+        // Create a variable for object path
         string objectPath =
-            $"cases/{caseId}/shared/contemporaneous-notes/{_sqids.Encode(contemporaneousNote.Id)}/note.txt";
+            $"cases/{caseId}/shared/contemporaneous-notes/{sqids.Encode(contemporaneousNote.Id)}/note.txt";
 
         // Check if bucket exists
         bool bucketExists = await minio.BucketExistsAsync(new BucketExistsArgs()
-            .WithBucket(organizationSettings.S3BucketName)
+            .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
         ).ConfigureAwait(false);
 
-        // If bucket does not exist return a HTTP 500 error
+        // If bucket does not exist return an HTTP 500 error
         if (!bucketExists)
-            return Problem($"An S3 Bucket with the name `{organizationSettings.S3BucketName}` does not exist!");
+            return Problem($"An S3 Bucket with the name `{configuration.GetValue<string>("Minio:BucketName")}` does not exist!");
 
         try
         {
@@ -334,7 +304,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
             // Save file to s3 bucket
             await minio.PutObjectAsync(new PutObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
                 .WithStreamData(memoryStream)
                 .WithObjectSize(memoryStream.Length)
@@ -358,7 +328,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
             // Create Meilisearch Client
             MeilisearchClient meiliClient =
-                new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+                new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
             // Try getting the contemporaneous-notes index
             try
@@ -373,29 +343,23 @@ public class SharedContemporaneousNotesController : ControllerBase
                 {
                     await meiliClient.CreateIndexAsync("shared-contemporaneous-notes", "id");
                     await meiliClient.Index("shared-contemporaneous-notes")
-                        .UpdateFilterableAttributesAsync(new[] { "caseId" });
+                        .UpdateFilterableAttributesAsync(["caseId"]);
                 }
             }
 
             // Get the contemporaneous-notes index
             Index index = meiliClient.Index("shared-contemporaneous-notes");
 
-            await index.AddDocumentsAsync(new[]
-            {
-                new SharedContemporaneousNote
-                {
-                    Id = contemporaneousNote.Id,
-                    CaseId = _sqids.Decode(caseId)[0],
-                    Content = content
-                }
-            });
+            await index.AddDocumentsAsync([
+                new SharedContemporaneousNote { Id = contemporaneousNote.Id, CaseId = sqids.Decode(caseId)[0], Content = content }
+            ]);
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
 
             // Fetch object metadata
             ObjectStat objectMetadata = await minio.StatObjectAsync(new StatObjectArgs()
-                .WithBucket(organizationSettings.S3BucketName)
+                .WithBucket(configuration.GetValue<string>("Minio:BucketName"))
                 .WithObject(objectPath)
             );
 
@@ -417,15 +381,15 @@ public class SharedContemporaneousNotesController : ControllerBase
             });
 
             // Save changes to the database
-            await _dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             // Log the creation
             await _auditContext.LogAsync("Lighthouse Notes",
                 new
                 {
                     Action =
-                        $"`{userNameJob}` created a shared contemporaneous note for `{sCase.DisplayName}` with the ID `{_sqids.Encode(contemporaneousNote.Id)}`.",
-                    UserID = userId, OrganizationID = organizationId
+                        $"`{userNameJob}` created a shared contemporaneous note for `{sCase.DisplayName}` with the ID `{sqids.Encode(contemporaneousNote.Id)}`.",
+                    EmailAddress = emailAddress
                 });
 
             // Return Ok
@@ -445,53 +409,48 @@ public class SharedContemporaneousNotesController : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(string), StatusCodes.Status500InternalServerError)]
-    [Authorize(Roles = "user")]
+    [Authorize]
     public async Task<ActionResult<List<API.SharedContemporaneousNotes>>> GetSearchContemporaneousNotes(string caseId,
         API.Search search)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
 
-        // If preflight checks returned a HTTP error raise it here
+        // If preflight checks returned an HTTP error raise it here
         if (preflightResponse.Error != null) return preflightResponse.Error;
 
-        // If preflight checks details are null return a HTTP 500 error
+        // If preflight checks details are null return an HTTP 500 error
         if (preflightResponse.Details == null)
             return Problem(
                 "Preflight checks failed with an unknown error!"
             );
 
         // Set variables from preflight response
-        string organizationId = preflightResponse.Details.OrganizationId;
-        Database.OrganizationSettings organizationSettings = preflightResponse.Details.OrganizationSettings;
-        long userId = preflightResponse.Details.UserId;
+        string emailAddress = preflightResponse.Details.EmailAddress;
         Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
 
-        long rawCaseId = _sqids.Decode(caseId)[0];
+        long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's organization ID and the user's ID
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
-        auditScope.SetCustomField("OrganizationID", organizationId);
-        auditScope.SetCustomField("UserID", userId);
+        auditScope.SetCustomField("emailAddress", emailAddress);
 
-        // Get case from the database including the required entities 
-        Database.Case? sCase = await _dbContext.Case
-            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.Id == userId))
+        // Get case from the database including the required entities
+        Database.Case? sCase = await dbContext.Case
+            .Where(c => c.Id == rawCaseId && c.Users.Any(cu => cu.User.EmailAddress == emailAddress))
             .Include(c => c.SharedContemporaneousNotes)
             .ThenInclude(scn => scn.Creator)
-            .ThenInclude(u => u.Roles)
             .Include(c => c.SharedContemporaneousNotes)
             .ThenInclude(scn => scn.Creator)
-            .ThenInclude(u => u.Organization)
             .SingleOrDefaultAsync();
 
-        // If case does not exist then return a HTTP 404 error 
+        // If case does not exist then return an HTTP 404 error
         if (sCase == null) return NotFound($"The case `{caseId}` does not exist!");
         // The case might not exist or the user does not have access to the case
 
         // Create Meilisearch Client
         MeilisearchClient meiliClient =
-            new(organizationSettings.MeilisearchUrl, organizationSettings.MeilisearchApiKey);
+            new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
         // Get the contemporaneous-notes index
         Index index = meiliClient.Index("shared-contemporaneous-notes");
@@ -499,15 +458,10 @@ public class SharedContemporaneousNotesController : ControllerBase
         // Search the index for the string filtering by case id and user id
         ISearchable<SharedContemporaneousNote> searchResult = await index.SearchAsync<SharedContemporaneousNote>(
             search.Query,
-            new SearchQuery
-            {
-                AttributesToSearchOn = new[] { "content" },
-                AttributesToRetrieve = new[] { "id" },
-                Filter = $"caseId = {rawCaseId}"
-            }
+            new SearchQuery { AttributesToSearchOn = ["content"], AttributesToRetrieve = ["id"], Filter = $"caseId = {rawCaseId}" }
         );
 
-        // Create a list of contemporaneous notes Ids that contain a match 
+        // Create a list of contemporaneous notes ids that contain a match
         List<long> contemporaneousNotesIds = searchResult.Hits.Select(cn => cn.Id).ToList();
 
         // Get the user's time zone
@@ -517,70 +471,45 @@ public class SharedContemporaneousNotesController : ControllerBase
         return sCase.SharedContemporaneousNotes.Where(cn => contemporaneousNotesIds.Contains(cn.Id))
             .Select(cn => new API.SharedContemporaneousNotes
             {
-                Id = _sqids.Encode(cn.Id),
+                Id = sqids.Encode(cn.Id),
                 Created = TimeZoneInfo.ConvertTimeFromUtc(cn.Created, timeZone),
                 Creator = new API.User
                 {
-                    Id = _sqids.Encode(cn.Creator.Id),
-                    Auth0Id = cn.Creator.Auth0Id,
-                    DisplayName = cn.Creator.DisplayName,
                     EmailAddress = cn.Creator.EmailAddress,
+                    DisplayName = cn.Creator.DisplayName,
                     GivenName = cn.Creator.GivenName,
                     LastName = cn.Creator.LastName,
-                    JobTitle = cn.Creator.JobTitle,
-                    ProfilePicture = cn.Creator.ProfilePicture,
-                    Roles = cn.Creator.Roles.Select(r => r.Name).ToList(),
-                    Organization = new API.Organization
-                    {
-                        DisplayName = cn.Creator.Organization.DisplayName,
-                        Name = cn.Creator.Organization.Name
-                    }
+                    JobTitle = cn.Creator.JobTitle
                 }
             }).ToList();
     }
 
     private async Task<PreflightResponse> PreflightChecks()
     {
-        // Get user ID from claim
-        string? auth0UserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+        // Get user email from JWT claim
+        string? emailAddress = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
 
-        // If user ID is null then it does not exist in JWT so return a HTTP 400 error
-        if (auth0UserId == null)
-            return new PreflightResponse
-                { Error = BadRequest("User ID can not be found in the JSON Web Token (JWT)!") };
+        // If user email is null then it does not exist in JWT so return an HTTP 400 error
+        if (string.IsNullOrEmpty(emailAddress))
+            return new PreflightResponse { Error = BadRequest("Email Address cannot be found in the JSON Web Token (JWT)!") };
 
-        // Get organization ID from claim
-        string? organizationId = User.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
-
-        // If organization ID  is null then it does not exist in JWT so return a HTTP 400 error
-        if (organizationId == null)
-            return new PreflightResponse
-                { Error = BadRequest("Organization ID can not be found in the JSON Web Token (JWT)!") };
-
-        // Select organization ID, organization settings, user ID and user name and job and settings from the user table
-        PreflightResponseDetails? userQueryResult = await _dbContext.User
-            .Where(u => u.Auth0Id == auth0UserId && u.Organization.Id == organizationId)
+        // Query user details including roles and application settings
+        PreflightResponseDetails? preflightData = await dbContext.User
+            .Where(u => u.EmailAddress == emailAddress)
+            .Include(u => u.Settings)
             .Select(u => new PreflightResponseDetails
             {
-                OrganizationId = u.Organization.Id,
-                OrganizationSettings = u.Organization.Settings,
-                UserId = u.Id,
-                UserNameJob = $"{u.DisplayName} ({u.JobTitle})",
-                UserSettings = u.Settings
-            }).SingleOrDefaultAsync();
+                EmailAddress = u.EmailAddress, UserNameJob = $"{u.DisplayName} ({u.JobTitle})", UserSettings = u.Settings
+            })
+            .SingleOrDefaultAsync();
 
-        // If query result is null then the user does not exit in the organization so return a HTTP 404 error
-        if (userQueryResult == null)
-            return new PreflightResponse
-            {
-                Error = NotFound(
-                    $"A user with the Auth0 user ID `{auth0UserId}` was not found in the organization with the Auth0 organization ID `{organizationId}`!")
-            };
+        // If query result is null then the user does not exist
+        if (preflightData == null)
+            return new PreflightResponse { Error = NotFound($"A user with the user email: `{emailAddress}` was not found!") }
+                ;
 
-        return new PreflightResponse
-        {
-            Details = userQueryResult
-        };
+        // Return preflight response
+        return new PreflightResponse { Details = preflightData };
     }
 
     private class PreflightResponse
@@ -591,9 +520,7 @@ public class SharedContemporaneousNotesController : ControllerBase
 
     private class PreflightResponseDetails
     {
-        public required string OrganizationId { get; init; }
-        public required Database.OrganizationSettings OrganizationSettings { get; init; }
-        public long UserId { get; init; }
+        public required string EmailAddress { get; init; }
         public required string UserNameJob { get; init; }
         public required Database.UserSettings UserSettings { get; init; }
     }

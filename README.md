@@ -24,12 +24,13 @@
 
 ## About
 
-Lighthouse is a university dissertation project which implements a source available digital forensics note taking application. With the following features:
+Lighthouse is a university dissertation project which implements a source available digital forensics note taking
+application. With the following features:
 
 - Authentication / Authorization
 - User management
 - Case management
-- Basic exhibit management 
+- Basic exhibit management
 - Timestamped contemporaneous notes
 - Custom tabs
 - Image / Picture uploads

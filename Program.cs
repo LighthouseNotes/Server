@@ -2,11 +2,11 @@ using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Web;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Mvc.Formatters;
-using Microsoft.Net.Http.Headers;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using StackExchange.Redis;
 
@@ -22,10 +22,7 @@ Console.ForegroundColor = ConsoleColor.White;
 // Create builder
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Create logger factory
-ILoggerFactory loggerFactory = LoggerFactory.Create(loggingBuilder => { loggingBuilder.AddSimpleConsole(); });
-
-// Add routing 
+// Add routing
 builder.Services.AddRouting(options =>
 {
     // Use lower case URLs and lower case query strings
@@ -43,25 +40,25 @@ if (builder.Environment.IsProduction())
         .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
 }
 
-// Add Certificate forwarding - for Nginx reverse proxy 
+// Add Certificate forwarding - for Nginx reverse proxy
 builder.Services.AddCertificateForwarding(options =>
 {
     options.CertificateHeader = "X-SSL-CERT";
     options.HeaderConverter = headerValue =>
     {
-        X509Certificate2 clientCertificate = new(System.Web.HttpUtility.UrlDecodeToBytes(headerValue));
+        X509Certificate2 clientCertificate = new(HttpUtility.UrlDecodeToBytes(headerValue));
         return clientCertificate;
     };
 });
 
-// Add forward headers for reverse proxy 
+// Add forward headers for reverse proxy
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =
         ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 });
 
-// Add cross origin
+// Add cross-origin
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(
@@ -78,10 +75,11 @@ builder.Services.AddCors(options =>
 // Add database connection
 builder.Services.AddDbContext<DatabaseContext>(options =>
 {
-    // Get connection string for database from appsettings.json, if it is null throw invalid operation exception and use query splitting 
+    // Get connection string for database from appsettings.json, if it is null throw invalid operation exception and use query splitting
     options.UseNpgsql(builder.Configuration.GetConnectionString("Database") ??
                       throw new InvalidOperationException(
-                          "Connection string 'Database' not found in appssettings.json or environment variable!"), o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
+                          "Connection string 'Database' not found in appssettings.json or environment variable!"),
+        o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
 
     // If environment is development enable sensitive data logging
     if (builder.Environment.IsDevelopment())
@@ -91,25 +89,26 @@ builder.Services.AddDbContext<DatabaseContext>(options =>
 // Add squids encoder service
 builder.Services.AddSingleton(new SqidsEncoder<long>(new SqidsOptions
 {
-    // Get alphabet from appsettings.json, if it is null throw  invalid operation exception 
+    // Get alphabet from appsettings.json, if it is null throw  invalid operation exception
     Alphabet = builder.Configuration["Sqids:Alphabet"] ??
-               throw new InvalidOperationException("Squid alphabet `Sqids:Alphabet` not found in appssettings.json or environment variable!"),
+               throw new InvalidOperationException(
+                   "Squid alphabet `Sqids:Alphabet` not found in appssettings.json or environment variable!"),
 
     // Get min length
     MinLength = Convert.ToInt32(builder.Configuration["Sqids:MinLength"])
 }));
 
-// Add JWT authentication 
+// Add JWT authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         // Get authority, audience and issuer from appsettings.json
-        options.Authority = $"https://{builder.Configuration["Auth0:Domain"]}/";
+        options.Authority = builder.Configuration["Authentication:Authority"];
         options.TokenValidationParameters =
-            new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            new TokenValidationParameters
             {
-                ValidAudience = builder.Configuration["Auth0:Audience"],
-                ValidIssuer = $"{builder.Configuration["Auth0:Domain"]}",
+                ValidAudience = builder.Configuration["Authentication:Audience"],
+                ValidIssuer = builder.Configuration["Authentication:Authority"],
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero
             };
@@ -131,102 +130,75 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// Add authorization 
+// Add authorization
 builder.Services.AddAuthorization();
 
 // Add controllers
-builder.Services.AddControllers(options =>
-    {
-        // Remove all input and output formatters
-        options.OutputFormatters.Clear();
-        options.InputFormatters.Clear();
-
-        // Create logger 
-        ILogger<SystemTextJsonInputFormatter> jsonLogger = loggerFactory.CreateLogger<SystemTextJsonInputFormatter>();
-
-        // Create a JSON Output and Input Formatter
-        SystemTextJsonOutputFormatter systemTextJsonOutputFormatter = new(new JsonSerializerOptions());
-        SystemTextJsonInputFormatter systemTextJsonInputFormatter = new(new JsonOptions(), jsonLogger);
-
-        // Remove all media types
-        systemTextJsonOutputFormatter.SupportedMediaTypes.Clear();
-        systemTextJsonInputFormatter.SupportedMediaTypes.Clear();
-
-        // Add application/json media type
-        systemTextJsonOutputFormatter.SupportedMediaTypes.Add(new MediaTypeHeaderValue("application/json"));
-        systemTextJsonOutputFormatter.SupportedMediaTypes.Add(new MediaTypeHeaderValue("application/problem+json"));
-        systemTextJsonInputFormatter.SupportedMediaTypes.Add(new MediaTypeHeaderValue("application/json"));
-
-        // Add JSON Output and Input Formatter to Output and Input Formatters 
-        options.OutputFormatters.Add(systemTextJsonOutputFormatter);
-        options.InputFormatters.Add(systemTextJsonInputFormatter);
-    })
+builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
+builder.Services.AddSingleton(builder.Configuration);
+
 // Add Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     // Swagger documentation
-    options.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Version = "v1",
-        Title = "Lighthouse Notes Server API",
-        Description = "An ASP.NET Core Web API for managing Lighthouse Notes",
-        Contact = new OpenApiContact
+    options.SwaggerDoc("v1",
+        new OpenApiInfo
         {
-            Name = "Ben Davies",
-        },
-        License = new OpenApiLicense
-        {
-            Name = "CC BY-NC 4.0",
-            Url = new Uri("https://raw.githubusercontent.com/LighthouseNotes/Server/main/LICENSEe")
-        }
-    });
+            Version = "v1",
+            Title = "Lighthouse Notes Server API",
+            Description = "An ASP.NET Core Web API for managing Lighthouse Notes",
+            Contact = new OpenApiContact { Name = "Ben Davies" },
+            License = new OpenApiLicense
+            {
+                Name = "CC BY-NC 4.0", Url = new Uri("https://raw.githubusercontent.com/LighthouseNotes/Server/main/LICENSEe")
+            }
+        });
 
-    // Create JWT authentication option in swagger
+    // Create OAuth2 authentication option in swagger
     OpenApiSecurityScheme securitySchema = new()
     {
         Description = "Using the Authorization header with the Bearer scheme.",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        Reference = new OpenApiReference
+        Type = SecuritySchemeType.OAuth2,
+        Flows = new OpenApiOAuthFlows
         {
-            Type = ReferenceType.SecurityScheme,
-            Id = "Bearer"
-        }
+            Implicit = new OpenApiOAuthFlow
+            {
+                AuthorizationUrl = new Uri($"{builder.Configuration["Authentication:Authority"]}/protocol/openid-connect/auth"),
+                Scopes = new Dictionary<string, string> { { "openid", "openid" }, { "profile", "profile" } }
+            }
+        },
+        Scheme = "bearer",
+        Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
     };
 
-    // Add JWT authentication option to swagger
+    // Add OAuth2 authentication option to swagger
     options.AddSecurityDefinition("Bearer", securitySchema);
 
-    // Set security requirements 
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        { securitySchema, new[] { "Bearer" } }
-    });
+    // Set security requirements
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement { { securitySchema, ["Bearer"] } });
 });
 
 // Configure Audit Logging
 Configuration.Setup()
     .UsePostgreSql(config => config
         .ConnectionString(builder.Configuration.GetConnectionString("Database") ??
-                          throw new InvalidOperationException("Connection string 'Database' not found in appssettings.json or environment variable!"))
+                          throw new InvalidOperationException(
+                              "Connection string 'Database' not found in appssettings.json or environment variable!"))
         .TableName("Event")
         .IdColumnName("Id")
         .DataColumn("Data")
         .LastUpdatedColumnName("Updated")
         .CustomColumn("EventType", ev => ev.EventType)
-        .CustomColumn("UserId", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "UserID").Value));
-
-// Register syncfusion licence 
-Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense(builder.Configuration["Syncfusion:LicenseKey"]);
+        .CustomColumn("EmailAddress", ev => ev.CustomFields.FirstOrDefault(a => a.Key == "EmailAddress").Value));
 
 // Build the app
 WebApplication app = builder.Build();
@@ -239,10 +211,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
+        options.OAuthClientId("lighthousenotes");
         options.RoutePrefix = string.Empty;
     });
 
-    // Developer exception page for detailed exception 
+    // Developer exception page for detailed exception
     app.UseDeveloperExceptionPage();
 }
 
@@ -257,7 +230,7 @@ if (app.Environment.IsProduction())
 // CORS
 app.UseCors();
 
-// Audit Logging Middleware 
+// Audit Logging Middleware
 app.UseAuditMiddleware(auditMiddleware => auditMiddleware
     .WithEventType("HTTP")
     .IncludeHeaders()
@@ -271,7 +244,7 @@ app.UseHttpsRedirection();
 // Routing
 app.UseRouting();
 
-// Use Authentication and Authorization 
+// Use Authentication and Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 

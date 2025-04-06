@@ -1,4 +1,5 @@
 {
+  // Logging levels
   "Logging": {
     "LogLevel": {
       "Default": "Warning",
@@ -6,21 +7,37 @@
       "Microsoft.Hosting.Lifetime": "Warning"
     }
   },
+  // Allowed hosts
   "AllowedHosts": "*",
-  "Urls": "http://localhost:6000",
-  "Auth0": {
-    "Domain": "example.auth0.com",
-    "Audience": "https://api.example.com"
+  // Url to run the app at
+  "Urls": "http://0.0.0.0:5000",
+  // Authentication 
+  "Authentication": {
+    "Authority": "https://idp.example.com/realms/master",
+    "Audience": "account"
   },
+  // Connection Strings - Database
   "ConnectionStrings": {
-    "DatabaseContext": "Host=localhost; Database=lighthousenotes; Username=example; Password=Example!2"
+    "Database": "Host=localhost;Database=lighthousenotes;Username=lighthousenotes;Password=changeme"
   },
+  // Sqids - Short unique identifiers from numbers
   "Sqids": {
     "Alphabet": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     "MinLength": 10
   },
-  "Syncfusion": {
-    "LicenseKey": "License"
+  // Minio - S3 Bucket 
+  "Minio": {
+    "Endpoint": "127.0.0.1:9000",
+    "BucketName": "lighthousenotes",
+    "NetworkEncryption": false,
+    "AccessKey": "changeme",
+    "SecretKey": "changeme"
   },
+  // Meilisearch - Search Engine
+  "Meilisearch": {
+    "Url": "http://localhost:7700",
+    "Key": "changeme"
+  },
+  // URL of the web application for cross-origin
   "WebApp": "https://app.example.com"
 }
