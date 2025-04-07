@@ -13,7 +13,7 @@ public class AuditController(DatabaseContext dbContext) : ControllerBase
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
     [Authorize]
-    public async Task<ActionResult<IEnumerable<API.UserAudit>>> SimpleAudit([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    public async Task<ActionResult<IEnumerable<API.UserAudit>>> UserAudit([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
         // Preflight checks
         PreflightResponse preflightResponse = await PreflightChecks();
@@ -48,6 +48,57 @@ public class AuditController(DatabaseContext dbContext) : ControllerBase
 
         // Return all events with the type "Lighthouse Notes" ordered by date in descending order
         return dbContext.Event.Where(e => e.User != null && e.EventType == "Lighthouse Notes" && e.User.EmailAddress == emailAddress)
+            .OrderByDescending(e => e.Created).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new API.UserAudit
+            {
+                Action = x.Data.RootElement.GetProperty("Action").GetString()!,
+                DateTime = TimeZoneInfo.ConvertTimeFromUtc(x.Data.RootElement.GetProperty("StartDate").GetDateTime(),
+                    timeZone)
+            }).ToList();
+    }
+
+    // GET: /audit/all
+    // Will return a paginated list of events with the type "Lighthouse Notes" ordered by date in descending order
+    [HttpGet("all")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+    [Authorize]
+    public async Task<ActionResult<IEnumerable<API.UserAudit>>> AllAudit([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    {
+        // Preflight checks
+        PreflightResponse preflightResponse = await PreflightChecks();
+
+        // If preflight checks returned an HTTP error raise it here
+        if (preflightResponse.Error != null) return preflightResponse.Error;
+
+        // If preflight checks details are null return an HTTP 500 error
+        if (preflightResponse.Details == null)
+            return Problem("Preflight checks failed with an unknown error!");
+
+        // Set variables from preflight response
+        string emailAddress = preflightResponse.Details.EmailAddress;
+        Database.UserSettings userSettings = preflightResponse.Details.UserSettings;
+
+        // Log the user's email address
+        IAuditScope auditScope = this.GetCurrentAuditScope();
+        auditScope.SetCustomField("emailAddress", emailAddress);
+
+        // Get the user's time zone
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(userSettings.TimeZone);
+
+        // Set pagination headers
+        HttpContext.Response.Headers.Append("X-Page", page.ToString());
+        HttpContext.Response.Headers.Append("X-Per-Page", pageSize.ToString());
+        HttpContext.Response.Headers.Append("X-Total-Count",
+            dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes")
+                .ToString());
+        HttpContext.Response.Headers.Append("X-Total-Pages",
+            ((dbContext.Event.Count(e => e.User != null && e.EventType == "Lighthouse Notes") +
+                pageSize - 1) / pageSize).ToString());
+
+        // Return all events with the type "Lighthouse Notes" ordered by date in descending order
+        return dbContext.Event.Where(e => e.User != null && e.EventType == "Lighthouse Notes")
             .OrderByDescending(e => e.Created).Skip((page - 1) * pageSize).Take(pageSize).Select(x => new API.UserAudit
             {
                 Action = x.Data.RootElement.GetProperty("Action").GetString()!,
