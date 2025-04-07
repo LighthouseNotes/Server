@@ -113,9 +113,60 @@ public class UserController(DatabaseContext dbContext, IConfiguration configurat
                 .ToList();
         }
 
-        // Calculate the total number of results and pages
+        // Calculate the total number of results and pages - at this point we are either returning all users or sorting
         HttpContext.Response.Headers.Append("X-Total-Count", dbContext.User.Count().ToString());
-        HttpContext.Response.Headers.Append("X-Total-Pages", ((dbContext.User.Count() + pageSize - 1) / pageSize).ToString());
+
+        // If page size is 0 then list all users
+        if (pageSize == 0)
+        {
+            HttpContext.Response.Headers.Append("X-Total-Pages", "1");
+
+            // If no sort is provided or too many sort parameters are provided
+            if (sortList == null || sortList.Count != 1)
+                // Return all users
+                return dbContext.User
+                    .OrderBy(u => u.LastName)
+                    .Select(u => new API.User
+                    {
+                        EmailAddress = u.EmailAddress,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName
+                    })
+                    .ToList();
+
+            string[] sortNoLimit = sortList[0].Split(" ");
+
+            return sortNoLimit[1] switch
+            {
+                // Return all users
+                "asc" => dbContext.User.OrderBy(u => EF.Property<object>(u, sortNoLimit[0]))
+                    .Select(u => new API.User
+                    {
+                        EmailAddress = u.EmailAddress,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName
+                    })
+                    .ToList(),
+                // Return all users
+                "desc" => dbContext.User.OrderBy(u => EF.Property<object>(u, sortNoLimit[0]))
+                    .Select(u => new API.User
+                    {
+                        EmailAddress = u.EmailAddress,
+                        JobTitle = u.JobTitle,
+                        GivenName = u.GivenName,
+                        LastName = u.LastName,
+                        DisplayName = u.DisplayName
+                    })
+                    .ToList(),
+                _ => BadRequest(
+                    $"Did you understand if you want to sort {sortNoLimit[0]} ascending or descending. Use asc or desc to sort!")
+            };
+        }
+
 
         // If no sort is provided or too many sort parameters are provided
         if (sortList == null || sortList.Count != 1)
