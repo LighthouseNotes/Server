@@ -45,6 +45,8 @@ public class CaseUserController(DatabaseContext dbContext, SqidsEncoder<long> sq
         Database.Case? sCase = await dbContext.Case
             .Where(c => c.Id == rawCaseId &&
                         c.Users.Any(cu => cu.User.EmailAddress == requestingEmailAddress && cu.IsLeadInvestigator))
+            .Include(c => c.Users)
+            .ThenInclude(cu => cu.User)
             .SingleOrDefaultAsync();
 
         // If case does not exist then return an HTTP 404 error
@@ -56,7 +58,7 @@ public class CaseUserController(DatabaseContext dbContext, SqidsEncoder<long> sq
             u.EmailAddress == emailAddress);
 
         // If user is null then return HTTP 404 not found
-        if (user == null) return NotFound($"A user with the ID `{emailAddress}` does not exist in your organization!");
+        if (user == null) return NotFound($"A user with the email address `{emailAddress}` does not exist!");
 
         // Add user to the case
         await dbContext.CaseUser.AddAsync(new Database.CaseUser { Case = sCase, User = user });
@@ -125,7 +127,7 @@ public class CaseUserController(DatabaseContext dbContext, SqidsEncoder<long> sq
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's email adress
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("emailAddress", requestingEmailAddress);
 
