@@ -69,9 +69,9 @@ public class CaseController(DatabaseContext dbContext, SqidsEncoder<long> sqids,
                 new SearchQuery
                 {
                     AttributesToSearchOn =
-                        ["DisplayId", "name", "displayName", "sioDisplayName", "sioGivenName", "sioLastName"],
+                        ["DisplayId", "name", "displayName", "leadInvestigatorDisplayName", "leadInvestigatorGivenName", "leadInvestigatorLastName"],
                     AttributesToRetrieve = ["id"],
-                    Filter = $"emailAddresses = {emailAddress}"
+                    Filter = $"emailAddresses = '{emailAddress}'"
                 }
             );
 
@@ -335,7 +335,7 @@ public class CaseController(DatabaseContext dbContext, SqidsEncoder<long> sqids,
         string userNameJob = preflightResponse.Details.UserNameJob;
         long rawCaseId = sqids.Decode(caseId)[0];
 
-        // Log the user's email adress
+        // Log the user's email address
         IAuditScope auditScope = this.GetCurrentAuditScope();
         auditScope.SetCustomField("emailAddress", emailAddress);
 
