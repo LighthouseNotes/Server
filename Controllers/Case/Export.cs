@@ -13,7 +13,6 @@ public class ExportController(DatabaseContext dbContext, SqidsEncoder<long> sqid
     // GET: /case/?/export
     // Return a model containing everything
     [HttpGet]
-    [AuditIgnore]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
