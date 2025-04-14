@@ -307,40 +307,47 @@ public class ContemporaneousNotesController(DatabaseContext dbContext, SqidsEnco
             HtmlDocument htmlDoc = new();
             htmlDoc.LoadHtml(text);
 
-            // Create a space separated list of all the text content in the HTML note
-            string content = htmlDoc.DocumentNode.SelectNodes("//text()")
-                .Aggregate("", (current, node) => current + $" {node.InnerText}");
+            HtmlNodeCollection? textNodes = htmlDoc.DocumentNode.SelectNodes("//text()");
 
-            // Create Meilisearch Client
-            MeilisearchClient meiliClient =
-                new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
-
-            // Try getting the contemporaneous-notes index
-            try
+            // Handle edge case where only a picture is uploaded
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+            if (textNodes != null)
             {
-                await meiliClient.GetIndexAsync("contemporaneous-notes");
-            }
-            // Catch Meilisearch exceptions
-            catch (MeilisearchApiError e)
-            {
-                // If error code is index_not_found create the index
-                if (e.Code == "index_not_found")
-                {
-                    await meiliClient.CreateIndexAsync("contemporaneous-notes", "id");
-                    await meiliClient.Index("contemporaneous-notes")
-                        .UpdateFilterableAttributesAsync(["caseId", "emailAddress"]);
-                }
-            }
+                // Create a space separated list of all the text content in the HTML note
+                string content = textNodes.Aggregate("", (current, node) => current + $" {node.InnerText}");
 
-            // Get the contemporaneous-notes index
-            Index index = meiliClient.Index("contemporaneous-notes");
+                // Create Meilisearch Client
+                MeilisearchClient meiliClient =
+                    new(configuration.GetValue<string>("Meilisearch:Url"), configuration.GetValue<string>("Meilisearch:Key"));
 
-            await index.AddDocumentsAsync([
-                new Search.ContemporaneousNote
+                // Try getting the contemporaneous-notes index
+                try
                 {
-                    Id = contemporaneousNote.Id, EmailAddress = emailAddress, CaseId = sqids.Decode(caseId)[0], Content = content
+                    await meiliClient.GetIndexAsync("contemporaneous-notes");
                 }
-            ]);
+                // Catch Meilisearch exceptions
+                catch (MeilisearchApiError e)
+                {
+                    // If error code is index_not_found create the index
+                    if (e.Code == "index_not_found")
+                    {
+                        await meiliClient.CreateIndexAsync("contemporaneous-notes", "id");
+                        await meiliClient.Index("contemporaneous-notes")
+                            .UpdateFilterableAttributesAsync(["caseId", "emailAddress"]);
+                    }
+                }
+
+                // Get the contemporaneous-notes index
+                Index index = meiliClient.Index("contemporaneous-notes");
+
+                await index.AddDocumentsAsync([
+                    new Search.ContemporaneousNote
+                    {
+                        Id = contemporaneousNote.Id, EmailAddress = emailAddress, CaseId = sqids.Decode(caseId)[0], Content = content
+                    }
+                ]);
+            }
+         
 
             // Set memory stream position to 0 as per github.com/minio/minio/issues/6274
             memoryStream.Position = 0;
