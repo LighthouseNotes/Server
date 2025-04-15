@@ -108,8 +108,8 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
 
         // If object hash is null then a hash does not exist so return an HTTP 500 error
         if (objectHashes == null)
-            return Problem($"Unable to find hash values for the image `{objectMetadata.ObjectName}` at `{objectPath}`!",
-                title: "Could not find hash value for the image!");
+            return Problem($"Unable to find hash values for the file `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                title: "Could not find hash value for the file!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -134,13 +134,13 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
 
         // Check generated MD5 hash matches the hash in the database
         if (!BitConverter.ToString(md5Hash).Replace("-", "").Equals(objectHashes.Md5Hash, StringComparison.InvariantCultureIgnoreCase))
-            return Problem($"MD5 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+            return Problem($"MD5 hash verification failed for file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                 title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (!BitConverter.ToString(sha256Hash).Replace("-", "").Equals(objectHashes.ShaHash, StringComparison.InvariantCultureIgnoreCase))
             return Problem(
-                $"SHA256 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                $"SHA256 hash verification failed for file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                 title: "SHA256 hash verification failed!");
 
         // Fetch presigned url for object
@@ -248,7 +248,7 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
             // If object hash is null then a hash does not exist so return an HTTP 500 error
             if (objectHashes == null)
                 return Problem(
-                    "The image you are trying to upload matches the name of an existing image, however the hash of the existing image cannot be found!");
+                    "The file you are trying to upload matches the name of an existing file, however the hash of the existing file cannot be found!");
 
             // Create memory stream to store file contents
             MemoryStream memoryStream = new();
@@ -269,14 +269,14 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
 
             // Check generated MD5 hash matches the hash in the database
             if (!BitConverter.ToString(md5Hash).Replace("-", "").Equals(objectHashes.Md5Hash, StringComparison.InvariantCultureIgnoreCase))
-                return Problem($"MD5 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                return Problem($"MD5 hash verification failed for file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                     title: "MD5 hash verification failed!");
 
             // Check generated SHA256 hash matches the hash in the database
             if (!BitConverter.ToString(sha256Hash).Replace("-", "")
                     .Equals(objectHashes.ShaHash, StringComparison.InvariantCultureIgnoreCase))
                 return Problem(
-                    $"SHA256 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                    $"SHA256 hash verification failed for file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                     title: "SHA256 hash verification failed!");
         }
         // Catch object not found exception and upload the object
@@ -329,12 +329,12 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
             // Save changes to the database
             await dbContext.SaveChangesAsync();
 
-            // Log the creation of the image
+            // Log the creation of the file
             await _auditContext.LogAsync("Lighthouse Notes",
                 new
                 {
                     Action =
-                        $"{userNameJob} uploaded an image to a {type} for case `{caseUser.Case.DisplayName}` with name `{fileName}`.",
+                        $"{userNameJob} uploaded an file to a {type} for case `{caseUser.Case.DisplayName}` with name `{fileName}`.",
                     EmailAddress = emailAddress
                 });
         }
@@ -350,7 +350,7 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
         return url;
     }
 
-    // GET: /case/?/file/?/image/100.jpg
+    // GET: /case/?/shared/?/file/100.jpg
     // Will return a presigned url for a file
     [HttpGet("shared/{type}/file/{fileName}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -403,10 +403,10 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
         switch (type)
         {
             case "contemporaneous-note":
-                objectPath = $"cases/{caseId}/shared/contemporaneous-notes/images/{fileName}";
+                objectPath = $"cases/{caseId}/shared/contemporaneous-notes/files/{fileName}";
                 break;
             case "tab":
-                objectPath = $"cases/{caseId}/shared/tabs/images/{fileName}";
+                objectPath = $"cases/{caseId}/shared/tabs/files/{fileName}";
                 break;
             default:
                 return BadRequest("Invalid type, must be `contemporaneous-note` or `tab`!");
@@ -445,8 +445,8 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
         // If object hash is null then a hash does not exist so return an HTTP 500 error
         if (objectHashes == null)
             return Problem(
-                $"Unable to find hash values for the shared image `{objectMetadata.ObjectName}` at `{objectPath}`!",
-                title: "Could not find hash value for the shared image!");
+                $"Unable to find hash values for the shared file `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                title: "Could not find hash value for the shared file!");
 
         // Create memory stream to store file contents
         MemoryStream memoryStream = new();
@@ -472,13 +472,13 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
         // Check generated MD5 hash matches the hash in the database
         if (!BitConverter.ToString(md5Hash).Replace("-", "").Equals(objectHashes.Md5Hash, StringComparison.InvariantCultureIgnoreCase))
             return Problem(
-                $"MD5 hash verification failed for shared image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                $"MD5 hash verification failed for shared file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                 title: "MD5 hash verification failed!");
 
         // Check generated SHA256 hash matches the hash in the database
         if (!BitConverter.ToString(sha256Hash).Replace("-", "").Equals(objectHashes.ShaHash, StringComparison.InvariantCultureIgnoreCase))
             return Problem(
-                $"SHA256 hash verification failed for the shared image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                $"SHA256 hash verification failed for the shared file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                 title: "SHA256 hash verification failed!");
 
         // Fetch presigned url for object
@@ -493,7 +493,7 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
     }
 
     // POST: /case/?/shared/?/file
-    [HttpPost("shared/{type}/file/")]
+    [HttpPost("shared/{type}/file")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(string), StatusCodes.Status401Unauthorized)]
@@ -557,10 +557,10 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
         switch (type)
         {
             case "contemporaneous-note":
-                objectPath = $"cases/{caseId}/shared/contemporaneous-notes/images/{fileName}";
+                objectPath = $"cases/{caseId}/shared/contemporaneous-notes/files/{fileName}";
                 break;
             case "tab":
-                objectPath = $"cases/{caseId}/shared/tabs/images/{fileName}";
+                objectPath = $"cases/{caseId}/shared/tabs/files/{fileName}";
                 break;
             default:
                 return BadRequest("Invalid type, must be `contemporaneous-note` or `tab`!");
@@ -584,7 +584,7 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
             // If object hash is null then a hash does not exist so return an HTTP 500 error
             if (objectHashes == null)
                 return Problem(
-                    "The image you are trying to upload matches the name of an existing image, however the hash of the existing image cannot be found!");
+                    "The file you are trying to upload matches the name of an existing file, however the hash of the existing file cannot be found!");
 
             // Create memory stream to store file contents
             MemoryStream memoryStream = new();
@@ -605,14 +605,14 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
 
             // Check generated MD5 hash matches the hash in the database
             if (!BitConverter.ToString(md5Hash).Replace("-", "").Equals(objectHashes.Md5Hash, StringComparison.InvariantCultureIgnoreCase))
-                return Problem($"MD5 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                return Problem($"MD5 hash verification failed for file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                     title: "MD5 hash verification failed!");
 
             // Check generated SHA256 hash matches the hash in the database
             if (!BitConverter.ToString(sha256Hash).Replace("-", "")
                     .Equals(objectHashes.ShaHash, StringComparison.InvariantCultureIgnoreCase))
                 return Problem(
-                    $"SHA256 hash verification failed for image `{objectMetadata.ObjectName}` at `{objectPath}`!",
+                    $"SHA256 hash verification failed for file `{objectMetadata.ObjectName}` at `{objectPath}`!",
                     title: "SHA256 hash verification failed!");
         }
         // Catch object not found exception and upload the object
@@ -665,12 +665,12 @@ public class ImageController(DatabaseContext dbContext, SqidsEncoder<long> sqids
             // Save changes to the database
             await dbContext.SaveChangesAsync();
 
-            // Log the creation of the image
+            // Log the creation of the file
             await _auditContext.LogAsync("Lighthouse Notes",
                 new
                 {
                     Action =
-                        $"`{userNameJob}` uploaded an image to a shared {type} for case `{sCase.DisplayName}` with name `{fileName}`.",
+                        $"`{userNameJob}` uploaded an file to a shared {type} for case `{sCase.DisplayName}` with name `{fileName}`.",
                     EmailAddress = emailAddress
                 });
         }
