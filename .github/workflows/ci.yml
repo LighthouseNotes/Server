@@ -76,7 +76,7 @@ jobs:
           release_name="LighthouseNotes-Server-$tag-${{ matrix.target }}"
 
           # Build everything
-          dotnet publish Server.csproj --framework net7.0 --runtime "${{ matrix.target }}" -c Release -o "$release_name" -p:PublishSingleFile=true --self-contained true
+          dotnet publish Server.csproj --framework net8.0 --runtime "${{ matrix.target }}" -c Release -o "$release_name" -p:PublishSingleFile=true --self-contained true
 
           # Pack files
           if [ "${{ matrix.target }}" == "win-x64" ]; then
