@@ -68,7 +68,8 @@ builder.Services.AddCors(options =>
                     "'WebApp' not found in appssettings.json or environment variable!"))
                 .AllowAnyMethod()
                 .AllowAnyHeader()
-                .AllowCredentials();
+                .AllowCredentials()
+                .WithExposedHeaders("x-page", "x-per-page", "x-total-count", "x-total-pages");
         });
 });
 
